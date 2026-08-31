@@ -6,11 +6,36 @@
       "package-name": "nix-ci",
       "include-component-in-tag": false,
       "changelog-sections": [
-        { "type": "feat", "section": "Features" },
-        { "type": "fix", "section": "Fixes" },
-        { "type": "perf", "section": "Performance" },
-        { "type": "docs", "section": "Documentation" },
-        { "type": "refactor", "section": "Refactoring" }
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "refactor",
+          "section": "Refactoring"
+        }
+      ],
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": ".github/workflows/ci.yaml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/update-pr.yaml"
+        }
       ]
     }
   }

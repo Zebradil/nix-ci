@@ -10,13 +10,13 @@ name: Update flake.lock (PR)
 # directly, since the action exposes `paths-file`, `gen` and `branch` as outputs and this wrapper
 # does not forward them.
 #
-# The action refs below are pinned to the same major as this workflow. A `v1` workflow always pairs
-# with `v1` actions; that pairing is the compatibility unit, and only a major release changes it.
+# The action refs below are pinned to this workflow's own version and bumped by the release, so a
+# workflow never runs actions from a different release than the one it shipped in.
 #
 # Usage:
 #   jobs:
 #     update:
-#       uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v1
+#       uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v0.1.0
 #       with:
 #         diff-targets: |
 #           checks.x86_64-linux.myhost
@@ -125,14 +125,14 @@ jobs:
           token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Setup Nix
-        uses: zebradil/nix-ci/.github/actions/setup-nix@v1
+        uses: zebradil/nix-ci/.github/actions/setup-nix@v0.1.0 # x-release-please-version
         with:
           extra-substituters: ${{ inputs.cache-url }}
           extra-trusted-public-keys: ${{ inputs.cache-public-key }}
           signing-key: ${{ secrets.cache-signing-key }}
 
       - name: Update flake.lock and open PR
-        uses: zebradil/nix-ci/.github/actions/update-lock-pr@v1
+        uses: zebradil/nix-ci/.github/actions/update-lock-pr@v0.1.0 # x-release-please-version
         with:
           token: ${{ steps.app-token.outputs.token || github.token }}
           has-app-token: ${{ steps.app-token.outputs.token != '' }}

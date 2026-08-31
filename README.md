@@ -32,7 +32,7 @@ on:
 
 jobs:
   ci:
-    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1
+    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v0.1.0
     with:
       discovery-types: checks
       runner-mapping: |
@@ -68,7 +68,7 @@ underneath instead — which is what proves the configuration compiles — and p
 ```yaml
 jobs:
   ci:
-    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1
+    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v0.1.0
     with:
       discovery-types: |
         nixosConfigurations
@@ -95,7 +95,7 @@ on:
 
 jobs:
   update:
-    uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v1
+    uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v0.1.0
     with:
       auto-merge: true
       diff-targets: |
@@ -132,11 +132,11 @@ resolves against *your* workspace rather than this one ([actions/runner#1348]).
 Chaining example, publishing a cache-specific manifest after the build:
 
 ```yaml
-      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1
+      - uses: zebradil/nix-ci/.github/actions/setup-nix@v0.1.0
         with:
           signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
       - id: build
-        uses: zebradil/nix-ci/.github/actions/build@v1
+        uses: zebradil/nix-ci/.github/actions/build@v0.1.0
         with:
           attr: checks.x86_64-linux.myhost
           strategy: uncached-leaves
@@ -156,9 +156,13 @@ trust `cache.nixos.org`, that is invisible. If they trust only your key, sign th
 
 ## Versioning
 
-Released with [release-please] from Conventional Commits. Pin `@v1`; the floating major tag moves to
-each release, and Renovate will resolve it to an exact version and rewrite it to a commit SHA in
-your repository. A `v1` workflow always calls `v1` actions — the major is the compatibility unit.
+Released with [release-please] from Conventional Commits. Pin a full version and let Renovate raise
+the bumps; it resolves the tag to a commit SHA in your repository. There is no floating major tag,
+on purpose: a moving ref silently changes what a pinned workflow runs, which is the one thing
+pinning exists to prevent.
+
+Each reusable workflow calls its sibling actions at its own exact version, bumped by the release, so
+a workflow and the actions it runs never drift apart.
 
 [nvd]: https://git.sr.ht/~khumba/nvd
 [release-please]: https://github.com/googleapis/release-please
