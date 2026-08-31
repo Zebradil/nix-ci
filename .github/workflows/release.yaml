@@ -13,6 +13,9 @@ name: Release
 on:
   push:
     branches: [main]
+  # release-please only compares an open release PR's title and body, so it will not pick up a
+  # config change on its own. Closing the PR and dispatching this rebuilds it.
+  workflow_dispatch:
 
 permissions:
   contents: read
