@@ -20,3 +20,22 @@ jobs:
       - uses: DeterminateSystems/determinate-nix-action@527f17dd63d2d60d3e5552934bc84b9a33a14d11 # v3.22.2
       - run: nix run nixpkgs#actionlint -- -color
       - run: nix shell nixpkgs#shellcheck -c shellcheck .github/actions/*/*.sh
+
+      # The reusable workflows pin the sibling actions they call. Nothing bumps those refs
+      # automatically — neither GITHUB_TOKEN nor an app without the Workflows permission may write
+      # files under .github/workflows — so a release that changes an action would otherwise ship a
+      # workflow still calling the previous one. Fail here instead, at the commit that introduced
+      # the drift.
+      - name: Pinned action refs match the released version
+        run: |
+          set -euo pipefail
+          version="v$(cat version.txt)"
+          # Anchored to a real `uses:` line so this check does not match its own grep pattern.
+          bad=$(grep -rnE '^[[:space:]]*-?[[:space:]]*uses: zebradil/nix-ci/\.github/actions/' \
+                  .github/workflows/ | grep -v "@${version}\b" || true)
+          if [[ -n "$bad" ]]; then
+            echo "::error::pinned action refs disagree with version.txt (${version}):"
+            echo "$bad"
+            exit 1
+          fi
+          echo "all pinned action refs are at ${version}"
