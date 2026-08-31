@@ -31,6 +31,14 @@
         {
           "type": "generic",
           "path": "README.md"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/ci.yaml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/update-pr.yaml"
         }
       ]
     }
