@@ -26,6 +26,16 @@
           "type": "refactor",
           "section": "Refactoring"
         }
+      ],
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": ".github/workflows/ci.yaml"
+        },
+        {
+          "type": "generic",
+          "path": ".github/workflows/update-pr.yaml"
+        }
       ]
     }
   }
