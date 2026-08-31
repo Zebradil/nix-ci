@@ -1,0 +1,129 @@
+name: Setup Nix
+description: >
+  Install Determinate Nix on a GitHub Actions runner and configure it for flake CI: extra
+  substituters, two layers of GitHub Actions caching, and — when a signing key is supplied — a store
+  that signs everything it builds.
+
+  Signing is configured through nix.conf's `secret-key-files` rather than a separate `nix store
+  sign` step, so every locally-built path carries the signature by the time anything looks at it.
+  That removes the sign-then-push ordering constraint entirely: a downstream push is just a copy.
+
+  Composite actions cannot reference sibling actions by relative path (a relative `uses:` resolves
+  against the consumer's workspace, not this repo — actions/runner#1348), so this action nests no
+  other action and callers invoke it at job level.
+
+inputs:
+  extra-substituters:
+    description: >
+      Space-separated Nix substituter URLs to add alongside cache.nixos.org. Safe to pass on fork
+      pull requests; prefer sourcing it from a repository `vars` entry rather than a secret, since
+      `secrets` are not exposed to forks.
+    required: false
+    default: ''
+  extra-trusted-public-keys:
+    description: Space-separated trusted public keys matching `extra-substituters`.
+    required: false
+    default: ''
+  signing-key:
+    description: >
+      Nix binary cache signing private key material (the key itself, not a path). When set, it is
+      written to a file and registered as `secret-key-files`, so the daemon signs every path it
+      builds. Leave empty on runs that must not be able to sign, such as fork pull requests.
+    required: false
+    default: ''
+  extra-conf:
+    description: Additional nix.conf lines appended verbatim to the installer's configuration.
+    required: false
+    default: ''
+
+outputs:
+  signing-key-file:
+    description: >
+      Path to the signing key on disk, or empty when no key was supplied. Only needed by callers
+      that must sign paths the daemon did not build — for example substituted dependencies being
+      republished to a cache whose consumers do not also trust the original substituter.
+    value: ${{ steps.key.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    # The key is written before the installer runs so that `secret-key-files` points at an existing
+    # file the moment the daemon starts. The daemon runs as root and can read a 0600 file owned by
+    # the runner user.
+    - name: Write signing key
+      id: key
+      shell: bash
+      env:
+        SIGNING_KEY: ${{ inputs.signing-key }}
+      run: |
+        if [[ -z "${SIGNING_KEY}" ]]; then
+          echo "file=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        file="$RUNNER_TEMP/nix-signing-key.pem"
+        ( umask 077; printf '%s' "$SIGNING_KEY" > "$file" )
+        echo "file=$file" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare flake source store
+      # A local file-based binary cache holding only flake input `*-source` paths. It is added as a
+      # fast extra substituter below and populated by a post-build-hook, so the slow
+      # `copying path '...-source'` substitutions from the network cache are served from the GitHub
+      # Actions cache on later runs.
+      #
+      # The hook runs inside the Nix daemon, which does not inherit step env vars, so the store
+      # directory is baked into the script as a literal. Flake source paths are content-addressed
+      # and need no signature to be substituted back.
+      shell: bash
+      run: |
+        store="$RUNNER_TEMP/source-cache"
+        mkdir -p "$store"
+        hook="$RUNNER_TEMP/copy-sources-hook.sh"
+        cat > "$hook" <<EOF
+        #!/usr/bin/env bash
+        # Runs inside the Nix daemon with a minimal PATH, so point at the Nix profile explicitly.
+        # A non-zero exit fails the build, so this must never fail: always exit 0.
+        export PATH="/nix/var/nix/profiles/default/bin:\$PATH"
+        [ -n "\${OUT_PATHS:-}" ] || exit 0
+        srcs=\$(nix-store --query --requisites \$OUT_PATHS 2>/dev/null | grep -E -- '-source\$' | sort -u) || true
+        [ -n "\$srcs" ] && nix copy --to "file://$store" \$srcs >/dev/null 2>&1
+        exit 0
+        EOF
+        chmod +x "$hook"
+
+    - name: Install Nix
+      uses: DeterminateSystems/determinate-nix-action@527f17dd63d2d60d3e5552934bc84b9a33a14d11 # v3.22.2
+      env:
+        # A GitHub account without a FlakeHub Cache entitlement still completes the installer's
+        # OIDC step and then fails the FlakeHub login, leaving cache.flakehub.com enrolled as a
+        # substituter that 401s on every narinfo lookup. The installer skips the login entirely
+        # when these are unset or empty, so force them blank. It then logs one info line claiming
+        # the workflow is misconfigured — that line is this comment, not a mistake.
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+      with:
+        extra-conf: |
+          download-buffer-size = 524288000
+          post-build-hook = ${{ runner.temp }}/copy-sources-hook.sh
+          extra-substituters = file://${{ runner.temp }}/source-cache ${{ inputs.extra-substituters }}
+          extra-trusted-substituters = file://${{ runner.temp }}/source-cache
+          extra-trusted-public-keys = ${{ inputs.extra-trusted-public-keys }}
+          ${{ steps.key.outputs.file && format('secret-key-files = {0}', steps.key.outputs.file) || '' }}
+          ${{ inputs.extra-conf }}
+
+    - name: Cache Nix download artefacts
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/nix
+        key: nix-cache-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/flake.lock') }}
+        restore-keys: |
+          nix-cache-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Cache flake source store paths
+      # Restores the file store before the job's Nix work and saves it at post. Keyed on flake.lock;
+      # restore-keys let a lock bump reuse the prior cache and refill only the changed inputs.
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/source-cache
+        key: nix-source-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/flake.lock') }}
+        restore-keys: |
+          nix-source-${{ runner.os }}-${{ runner.arch }}-

@@ -1,0 +1,169 @@
+name: Build flake target
+description: >
+  Build one flake target and, optionally, push what was built to a binary cache.
+
+  Two strategies, because two shapes of flake target need opposite treatment:
+
+  `attr-set` (default) takes a fragment holding a set of derivations — `checks.x86_64-linux`, say —
+  and hands it to nix-fast-build, which evaluates and builds in parallel, skips anything a
+  substituter already has, and streams each finished output closure to the cache as it lands. This
+  is the right shape for package and library repositories.
+
+  `uncached-leaves` takes a single NixOS/nix-darwin system toplevel attribute. Such a target must
+  never be realized on a CI runner: the toplevel derivation compiles nothing, it only symlinks an
+  already-substitutable runtime closure, so building it drags gigabytes onto the runner and
+  exhausts its disk while proving nothing. Instead `build-set.sh` finds the genuinely uncached leaf
+  derivations underneath it and builds only those — which is what actually proves the configuration
+  compiles — and the toplevel's `.drv` recipe is pushed alongside the outputs so the target host can
+  realize it later from the cache.
+
+  nix-fast-build cannot express the second shape: its `--select` runs before any store lookup, and
+  every one of its build paths ends in realizing the toplevel derivation. Its uploader also
+  converts `.drv` paths to outputs, so it can never publish a recipe.
+
+  Signing is not done here. The caller's `setup-nix` registers the key as nix.conf
+  `secret-key-files`, so paths are signed as the daemon builds them and the push is a plain copy.
+  Note the consequence: paths this runner *substituted* rather than built keep only their upstream
+  signature, so consumers of your cache must trust that upstream too.
+
+  This action installs nothing. Call `setup-nix` at job level first — a composite action cannot
+  invoke a sibling action in the same repository, because a relative `uses:` resolves against the
+  consumer's workspace rather than this repo (actions/runner#1348).
+
+inputs:
+  attr:
+    description: >
+      strategy=uncached-leaves: one flake attribute, e.g. `checks.x86_64-linux.myhost-build`.
+      strategy=attr-set: a fragment holding a set of derivations, e.g. `checks.x86_64-linux`.
+    required: true
+  strategy:
+    description: '`attr-set` or `uncached-leaves`. See the action description for which to use.'
+    required: false
+    default: attr-set
+  max-jobs:
+    description: Parallel build jobs. Empty leaves the Nix default alone.
+    required: false
+    default: ''
+  cache-s3-url:
+    description: >
+      Target for `nix copy --to`, e.g. `s3://my-bucket?region=eu-central-1`. Empty builds without
+      publishing, which is what a fork pull request should do.
+    required: false
+    default: ''
+  aws-access-key-id:
+    description: AWS access key ID for the S3 push.
+    required: false
+    default: ''
+  aws-secret-access-key:
+    description: AWS secret access key for the S3 push.
+    required: false
+    default: ''
+
+outputs:
+  paths-file:
+    description: >
+      File listing the store paths that were pushed, one per line, or empty. A file rather than a
+      value because a system closure runs to thousands of paths. Chain it into a cache-specific
+      follow-up action — publishing a generation manifest, notifying a mirror — that needs to know
+      what this step put in the cache. Only populated for strategy=uncached-leaves; nix-fast-build
+      streams its uploads and never reports a single closure.
+    value: ${{ steps.paths.outputs.file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build uncached leaves
+      if: ${{ inputs.strategy == 'uncached-leaves' }}
+      shell: bash
+      env:
+        ATTR: ${{ inputs.attr }}
+        MAX_JOBS: ${{ inputs.max-jobs }}
+      run: |
+        set -euo pipefail
+        drvs=$("$GITHUB_ACTION_PATH/build-set.sh" "$ATTR")
+        if [[ -z "$drvs" ]]; then
+          echo "Nothing uncached to build for ${ATTR}."
+          exit 0
+        fi
+        # `<drv>^*` requests all outputs of each derivation.
+        targets=()
+        while IFS= read -r d; do
+          [[ -n "$d" ]] && targets+=("${d}^*")
+        done <<<"$drvs"
+        # --keep-going: build as much as possible so the successful paths can still be published
+        # below. A single broken derivation still fails the job through nix build's exit code,
+        # without forcing everything else to rebuild on the next run.
+        args=(build --keep-going --no-link)
+        if [[ -n "$MAX_JOBS" ]]; then args+=(--max-jobs "$MAX_JOBS"); fi
+        nix "${args[@]}" "${targets[@]}"
+
+    - name: Resolve built store paths
+      id: paths
+      # always(): run even when the build failed, so whatever did build still gets published
+      # instead of being rebuilt from scratch next time.
+      if: ${{ always() && inputs.strategy == 'uncached-leaves' && inputs.cache-s3-url != '' }}
+      shell: bash
+      env:
+        ATTR: ${{ inputs.attr }}
+      run: |
+        set -euo pipefail
+        # The final output may be invalid after a failed build, so resolve the whole derivation
+        # closure including outputs and keep only what actually exists in the store.
+        # `nix path-info --derivation` instantiates the .drv without building it.
+        drv=$(nix path-info --derivation ".#${ATTR}" 2>/dev/null || true)
+        : > "$RUNNER_TEMP/candidates.txt" "$RUNNER_TEMP/invalid.txt" "$RUNNER_TEMP/store-paths.txt"
+        if [[ -n "$drv" ]]; then
+          # Built outputs, not the .drv files themselves.
+          nix-store --query --requisites --include-outputs "$drv" \
+            | { grep -v '\.drv$' || true; } | sort -u > "$RUNNER_TEMP/candidates.txt"
+          # --print-invalid lists the missing paths in one call, so a partial build contributes its
+          # finished outputs without spawning a process per path.
+          xargs -r nix-store --check-validity --print-invalid \
+            < "$RUNNER_TEMP/candidates.txt" 2>/dev/null \
+            | sort -u > "$RUNNER_TEMP/invalid.txt"
+          comm -23 "$RUNNER_TEMP/candidates.txt" "$RUNNER_TEMP/invalid.txt" \
+            > "$RUNNER_TEMP/store-paths.txt"
+          # Also publish the toplevel's .drv recipe closure — its input drvs and source paths, text
+          # at KB scale. This is what lets a consuming host run the toplevel's assembly locally,
+          # substituting every input from the cache, instead of needing the toplevel output itself.
+          # These paths are store-valid by construction, having just been instantiated.
+          nix-store --query --requisites "$drv" >> "$RUNNER_TEMP/store-paths.txt"
+          sort -u -o "$RUNNER_TEMP/store-paths.txt" "$RUNNER_TEMP/store-paths.txt"
+        fi
+        echo "file=$RUNNER_TEMP/store-paths.txt" >> "$GITHUB_OUTPUT"
+
+    - name: Push store paths
+      if: ${{ always() && inputs.strategy == 'uncached-leaves' && inputs.cache-s3-url != '' }}
+      shell: bash
+      env:
+        S3_URL: ${{ inputs.cache-s3-url }}
+        PATHS_FILE: ${{ steps.paths.outputs.file }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+      run: |
+        set -euo pipefail
+        if [[ ! -s "$PATHS_FILE" ]]; then
+          echo "No valid store paths to push."
+          exit 0
+        fi
+        # xargs feeds the paths in batches: a system closure overflows the argument limit.
+        xargs -r -a "$PATHS_FILE" nix copy --to "$S3_URL"
+
+    - name: Build attribute set
+      if: ${{ inputs.strategy == 'attr-set' }}
+      shell: bash
+      env:
+        ATTR: ${{ inputs.attr }}
+        MAX_JOBS: ${{ inputs.max-jobs }}
+        S3_URL: ${{ inputs.cache-s3-url }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+      run: |
+        set -euo pipefail
+        # --skip-cached asks nix-eval-jobs for each attribute's cache status and never queues one a
+        # substituter can already serve. --copy-to uploads each output closure as its build
+        # finishes, so a long matrix publishes progressively rather than all at the end.
+        args=(--flake ".#${ATTR}" --skip-cached --no-nom)
+        if [[ -n "$MAX_JOBS" ]]; then args+=(--max-jobs "$MAX_JOBS"); fi
+        if [[ -n "$S3_URL" ]]; then args+=(--copy-to "$S3_URL"); fi
+        nix run nixpkgs#nix-fast-build -- "${args[@]}"

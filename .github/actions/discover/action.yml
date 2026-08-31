@@ -1,0 +1,65 @@
+name: Discover flake targets
+description: >
+  Enumerate a flake's outputs and emit a GitHub Actions matrix of build targets, one entry per
+  attribute, each tagged with its Nix system and the runner label that can build it.
+
+  Discovery reads only structure — attribute names, and each OS configuration's host platform —
+  in a single `builtins.getFlake` evaluation. `nix flake show --all-systems` would instead force
+  every leaf to report its name and description, which means instantiating expensive system
+  toplevels merely to learn they exist. Structure-only evaluation turns that from tens of seconds
+  into about one.
+
+  Systems absent from `runner-mapping` are dropped with a warning rather than failing the run, so
+  a flake that declares a system you have no runner for still produces a usable matrix.
+
+  This action installs nothing. Call `setup-nix` at job level first — a composite action cannot
+  invoke a sibling action in the same repository (actions/runner#1348).
+
+inputs:
+  discovery-types:
+    description: >
+      Newline-separated flake output types to enumerate, e.g. `checks`, `packages`, `devShells`,
+      `nixosConfigurations`, `darwinConfigurations`. OS configuration types expand to their
+      `config.system.build.toplevel`; per-system types expand to their members.
+    required: false
+    default: |
+      nixosConfigurations
+      darwinConfigurations
+      devShells
+  runner-mapping:
+    description: >
+      Newline-separated `<nix-system>:<runner-label>` pairs, e.g. `x86_64-linux:ubuntu-latest`.
+    required: false
+    default: |
+      x86_64-linux:ubuntu-latest
+      aarch64-darwin:macos-26
+  attr-filter:
+    description: >
+      Optional regex applied to each discovered attribute name; non-matching targets are dropped.
+      Empty keeps everything.
+    required: false
+    default: ''
+
+outputs:
+  matrix:
+    description: >
+      JSON matrix include list, e.g.
+      `{"include":[{"attr":"checks.x86_64-linux.myhost","system":"x86_64-linux","runner":"ubuntu-latest"}]}`.
+    value: ${{ steps.discover.outputs.matrix }}
+  has-targets:
+    description: >
+      'true' when at least one target was discovered. GitHub fails a job whose matrix is empty, so
+      gate the build job on this.
+    value: ${{ steps.discover.outputs.has_targets }}
+
+runs:
+  using: composite
+  steps:
+    - name: Discover flake targets
+      id: discover
+      shell: bash
+      env:
+        DISCOVERY_TYPES: ${{ inputs.discovery-types }}
+        RUNNER_MAPPING: ${{ inputs.runner-mapping }}
+        ATTR_FILTER: ${{ inputs.attr-filter }}
+      run: "$GITHUB_ACTION_PATH/discover-targets.sh"

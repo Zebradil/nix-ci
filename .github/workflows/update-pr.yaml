@@ -1,0 +1,144 @@
+name: Update flake.lock (PR)
+
+# Reusable workflow: run `nix flake update`, diff what the update would actually change, and open
+# or update a pull request against the default branch. When flake.lock turns out to be current and
+# a stale update PR is open, that PR is closed instead.
+#
+# This is the batteries-included path. It calls the `update-lock-pr` action, which is where the
+# logic lives; a repository that needs to do something extra with the built closure — publish a
+# manifest, notify a cache of a new generation — should skip this workflow and call the action
+# directly, since the action exposes `paths-file`, `gen` and `branch` as outputs and this wrapper
+# does not forward them.
+#
+# The action refs below are pinned to the same major as this workflow. A `v1` workflow always pairs
+# with `v1` actions; that pairing is the compatibility unit, and only a major release changes it.
+#
+# Usage:
+#   jobs:
+#     update:
+#       uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v1
+#       with:
+#         diff-targets: |
+#           checks.x86_64-linux.myhost
+#       secrets:
+#         app-id: ${{ secrets.CI_APP_ID }}
+#         app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+on:
+  workflow_call:
+    inputs:
+      branch-name:
+        description: Branch the flake.lock update is pushed to.
+        type: string
+        required: false
+        default: automation/flake-update
+      auto-merge:
+        description: >
+          Enable GitHub auto-merge (squash) on the PR. Requires "Allow auto-merge" in repository
+          settings plus branch protection with required status checks — without them the PR merges
+          the moment it is created, or the auto-merge request is simply refused.
+        type: boolean
+        required: false
+        default: true
+      diff-targets:
+        description: >
+          Newline-separated flake attributes to build before and after the update, so the PR body
+          can carry an nvd package diff of what the update really changes. Targets whose system
+          does not match the runner are skipped with a notice. Leave empty to skip the diff, which
+          also skips the cache push — there is nothing built to push.
+        type: string
+        required: false
+        default: ''
+      runs-on:
+        description: >
+          Runner label for the job. The diff builds happen here, so this must be a runner whose
+          system matches the `diff-targets` you care about.
+        type: string
+        required: false
+        default: ubuntu-latest
+      cache-url:
+        description: >
+          HTTPS URL of a Nix binary cache to use as an extra substituter while building the diff
+          targets. Not a secret; source it from a repository `vars` entry.
+        type: string
+        required: false
+        default: ''
+      cache-public-key:
+        description: Trusted public key matching `cache-url`.
+        type: string
+        required: false
+        default: ''
+    secrets:
+      app-id:
+        description: >
+          GitHub App ID used to mint the token that creates the PR. Strongly recommended: a PR
+          created with GITHUB_TOKEN does not fire `pull_request` events, so the repository's own CI
+          never runs on it — which defeats auto-merge and makes the PR unreviewable by machine.
+        required: false
+      app-private-key:
+        description: Private key paired with `app-id`.
+        required: false
+      cache-signing-key:
+        description: >
+          Nix signing key. Registered as `secret-key-files`, so the diff builds are signed as they
+          are produced and the push below is a plain copy.
+        required: false
+      cache-s3-url:
+        description: S3 URL for `nix copy --to`. Empty skips the push of the post-update builds.
+        required: false
+      aws-access-key-id:
+        description: AWS access key ID for the S3 push.
+        required: false
+      aws-secret-access-key:
+        description: AWS secret access key for the S3 push.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      # The `secrets` context is not available in a step-level `if:`, so the presence check is
+      # hoisted to job level where it is.
+      HAS_APP_CREDS: ${{ secrets.app-id != '' && secrets.app-private-key != '' }}
+    steps:
+      # Minted before checkout so that actions/checkout can bake the push credentials into the
+      # git remote in one step.
+      - name: Generate app token
+        id: app-token
+        if: ${{ env.HAS_APP_CREDS == 'true' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+      - name: Setup Nix
+        uses: zebradil/nix-ci/.github/actions/setup-nix@v1
+        with:
+          extra-substituters: ${{ inputs.cache-url }}
+          extra-trusted-public-keys: ${{ inputs.cache-public-key }}
+          signing-key: ${{ secrets.cache-signing-key }}
+
+      - name: Update flake.lock and open PR
+        uses: zebradil/nix-ci/.github/actions/update-lock-pr@v1
+        with:
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          has-app-token: ${{ steps.app-token.outputs.token != '' }}
+          branch-name: ${{ inputs.branch-name }}
+          auto-merge: ${{ inputs.auto-merge }}
+          diff-targets: ${{ inputs.diff-targets }}
+          cache-s3-url: ${{ secrets.cache-s3-url }}
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}

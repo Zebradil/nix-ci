@@ -1,0 +1,29 @@
+name: actionlint probe
+
+# This workflow exists to be linted, not to be run. actionlint only checks workflow files, so a
+# composite action's `run:` blocks are invisible to it — and shellcheck with them — unless some
+# workflow references the action by a local path. Referencing all four here gives them the same
+# coverage the real workflows get. Nothing calls it; `workflow_dispatch` keeps it callable by hand
+# if the resolution ever needs debugging.
+
+on: workflow_dispatch
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - id: s
+        uses: ./.github/actions/setup-nix
+        with:
+          signing-key: x
+      - id: d
+        uses: ./.github/actions/discover
+      - id: b
+        uses: ./.github/actions/build
+        with:
+          attr: checks.x86_64-linux.default
+          strategy: uncached-leaves
+          cache-s3-url: s3://x
+      - id: u
+        uses: ./.github/actions/update-lock-pr
+        with:
+          token: t

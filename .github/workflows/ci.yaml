@@ -1,0 +1,201 @@
+name: Nix CI
+
+# Reusable workflow: evaluate a flake, then build every declared output on a runner that can
+# actually build it, publishing the results to a binary cache.
+#
+#   1. check     — `nix flake check --no-build` plus optional `nix fmt -- --check`
+#   2. discover  — enumerate flake outputs into a build matrix
+#   3. build     — one job per discovered attribute
+#
+# There is no cache-probe job. Both build strategies establish for themselves what is already
+# cached — `attr-set` through nix-fast-build's `--skip-cached`, `uncached-leaves` through
+# `build-set.sh` — so a separate probe would only save spawning a job that exits in seconds.
+#
+# This is the batteries-included path. A repository that needs to do something with the pushed
+# closure — publish a generation manifest, notify a mirror — should call the `build` action
+# directly, since it exposes `paths-file` and this wrapper does not forward outputs.
+#
+# The action refs below are pinned to the same major as this workflow: a `v1` workflow always pairs
+# with `v1` actions, and only a major release changes that pairing.
+#
+# Usage:
+#   jobs:
+#     ci:
+#       uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1
+#       with:
+#         discovery-types: checks
+#         push-to-cache: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+#       secrets:
+#         cache-signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
+#         cache-s3-url: ${{ secrets.CACHE_S3_URL }}
+#         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+on:
+  workflow_call:
+    inputs:
+      discovery-types:
+        description: Newline-separated flake output types to build.
+        type: string
+        required: false
+        default: |
+          nixosConfigurations
+          darwinConfigurations
+          devShells
+      runner-mapping:
+        description: Newline-separated `<nix-system>:<runner-label>` pairs.
+        type: string
+        required: false
+        default: |
+          x86_64-linux:ubuntu-latest
+          aarch64-darwin:macos-26
+      attr-filter:
+        description: Optional regex; discovered attributes that do not match are dropped.
+        type: string
+        required: false
+        default: ''
+      build-strategy:
+        description: >
+          `attr-set` (nix-fast-build, for package and library flakes) or `uncached-leaves` (for
+          NixOS/nix-darwin system toplevels, which must never be realized on a runner). See the
+          `build` action's description for why the distinction exists.
+        type: string
+        required: false
+        default: attr-set
+      check-flake:
+        description: >
+          Run `nix flake check --no-build`. Worth keeping even when the build job covers `checks`:
+          it is the only thing that catches an eval error in an output the matrix does not touch.
+        type: boolean
+        required: false
+        default: true
+      check-formatting:
+        description: Run `nix fmt -- --check`.
+        type: boolean
+        required: false
+        default: false
+      pre-instantiate-checks:
+        description: >
+          Force each check's `drvPath` before running `nix flake check`. Only needed when a check's
+          closure contains source paths created during evaluation: under lazy trees, `--no-build`
+          evaluates a check's `outPath` without instantiating it, so those paths are known by hash
+          yet never written to the store, and the check then fails with "path '...' is not valid".
+          Instantiating first materializes them. A Nix-version-specific workaround; leave it off
+          unless you hit that error.
+        type: boolean
+        required: false
+        default: false
+      push-to-cache:
+        description: >
+          Publish what was built. Gate this on the pull request coming from the repository itself —
+          a fork has no access to the secrets anyway, and this makes the build job say so rather
+          than fail at the push.
+        type: boolean
+        required: false
+        default: false
+      cache-url:
+        description: >
+          HTTPS URL of a binary cache to use as an extra substituter. Not a secret; source it from
+          a repository `vars` entry so fork pull requests can read from the cache too.
+        type: string
+        required: false
+        default: ''
+      cache-public-key:
+        description: Trusted public key matching `cache-url`.
+        type: string
+        required: false
+        default: ''
+      check-runner:
+        description: Runner label for the check and discover jobs.
+        type: string
+        required: false
+        default: ubuntu-latest
+    secrets:
+      cache-signing-key:
+        description: >
+          Nix signing key, registered as nix.conf `secret-key-files` so every path the runner builds
+          is signed as it is produced.
+        required: false
+      cache-s3-url:
+        description: S3 URL for `nix copy --to`. Empty builds without publishing.
+        required: false
+      aws-access-key-id:
+        description: AWS access key ID for the S3 push.
+        required: false
+      aws-secret-access-key:
+        description: AWS secret access key for the S3 push.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ${{ inputs.check-runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1
+        with:
+          extra-substituters: ${{ inputs.cache-url }}
+          extra-trusted-public-keys: ${{ inputs.cache-public-key }}
+
+      - name: Pre-instantiate checks
+        if: ${{ inputs.check-flake && inputs.pre-instantiate-checks }}
+        # One eval for all checks, reusing a single flake evaluation instead of cold-loading it once
+        # per attribute as a shell loop would.
+        run: |
+          system=$(nix eval --raw --impure --expr builtins.currentSystem)
+          nix eval --json ".#checks.${system}" \
+            --apply 'builtins.mapAttrs (_: c: c.drvPath)' >/dev/null
+
+      - name: Check flake
+        if: ${{ inputs.check-flake }}
+        # --no-build: the build job builds every check on a runner that matches its system, so
+        # building here as well would be the same work on the wrong machine.
+        run: nix flake check --no-build
+
+      - name: Verify formatting
+        if: ${{ inputs.check-formatting }}
+        run: nix fmt -- --check
+
+  discover:
+    runs-on: ${{ inputs.check-runner }}
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      has-targets: ${{ steps.discover.outputs.has-targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1
+
+      - id: discover
+        uses: zebradil/nix-ci/.github/actions/discover@v1
+        with:
+          discovery-types: ${{ inputs.discovery-types }}
+          runner-mapping: ${{ inputs.runner-mapping }}
+          attr-filter: ${{ inputs.attr-filter }}
+
+  build:
+    needs: [check, discover]
+    if: ${{ needs.discover.outputs.has-targets == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1
+        with:
+          extra-substituters: ${{ inputs.cache-url }}
+          extra-trusted-public-keys: ${{ inputs.cache-public-key }}
+          signing-key: ${{ inputs.push-to-cache && secrets.cache-signing-key || '' }}
+
+      - uses: zebradil/nix-ci/.github/actions/build@v1
+        with:
+          attr: ${{ matrix.attr }}
+          strategy: ${{ inputs.build-strategy }}
+          cache-s3-url: ${{ inputs.push-to-cache && secrets.cache-s3-url || '' }}
+          aws-access-key-id: ${{ secrets.aws-access-key-id }}
+          aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
