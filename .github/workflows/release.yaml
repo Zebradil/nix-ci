@@ -41,5 +41,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "v${MAJOR}" "${TAG}"
+          # ^{} dereferences to the commit: release-please's tag is annotated, and tagging a
+          # tag object would make v1 a nested tag that resolves to the wrong kind of ref.
+          git tag -f "v${MAJOR}" "${TAG}^{}"
           git push -f origin "v${MAJOR}"
