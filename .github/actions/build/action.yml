@@ -62,12 +62,13 @@ inputs:
 outputs:
   paths-file:
     description: >
-      File listing the store paths that were pushed, one per line, or empty. A file rather than a
-      value because a system closure runs to thousands of paths. Chain it into a cache-specific
-      follow-up action — publishing a generation manifest, notifying a mirror — that needs to know
-      what this step put in the cache. Only populated for strategy=uncached-leaves; nix-fast-build
-      streams its uploads and never reports a single closure.
-    value: ${{ steps.paths.outputs.file }}
+      File listing the store paths that were pushed, one per line, or empty when nothing was
+      published. A file rather than a value because a system closure runs to thousands of paths.
+      Chain it into a cache-specific follow-up action — publishing a generation manifest, notifying
+      a mirror — that needs to know what this step put in the cache. Populated for both strategies,
+      though by different means: nix-fast-build streams its uploads and reports no single closure,
+      so `attr-set` resolves the set afterwards.
+    value: ${{ steps.paths.outputs.file || steps.attr-set-paths.outputs.file }}
 
 runs:
   using: composite
@@ -167,3 +168,36 @@ runs:
         if [[ -n "$MAX_JOBS" ]]; then args+=(--max-jobs "$MAX_JOBS"); fi
         if [[ -n "$S3_URL" ]]; then args+=(--copy-to "$S3_URL"); fi
         nix run nixpkgs#nix-fast-build -- "${args[@]}"
+
+    - name: Resolve pushed closure
+      id: attr-set-paths
+      # always(): a partially failed matrix still published what it built, and a follow-up action
+      # needs to hear about those paths rather than treat the whole run as having pushed nothing.
+      if: ${{ always() && inputs.strategy == 'attr-set' && inputs.cache-s3-url != '' }}
+      shell: bash
+      env:
+        ATTR: ${{ inputs.attr }}
+      run: |
+        set -euo pipefail
+        # Output closures only. Asking for each attribute's *build* closure would name every
+        # nixpkgs input — tens of gigabytes that cache.nixos.org already serves, and none of it was
+        # pushed. What a follow-up action needs is what actually landed in the cache.
+        attrs=()
+        # `nix eval --raw` emits no trailing newline, so a plain `read` loop drops the last name.
+        while IFS= read -r a || [[ -n "$a" ]]; do
+          [[ -n "$a" ]] && attrs+=(".#${ATTR}.${a}")
+        done < <(
+          nix eval --raw ".#${ATTR}" \
+            --apply 'cs: builtins.concatStringsSep "\n" (builtins.attrNames cs)'
+        )
+        : > "$RUNNER_TEMP/attr-set-paths.txt"
+        if [[ ${#attrs[@]} -gt 0 ]]; then
+          # Everything here was just built or was already substitutable, so this resolves without
+          # doing work. --keep-going so a failed sibling does not hide the closures that succeeded;
+          # --print-out-paths then lists only those.
+          nix build --no-link --keep-going --print-out-paths "${attrs[@]}" \
+            > "$RUNNER_TEMP/attr-set-outs.txt" || true
+          xargs -r nix-store --query --requisites < "$RUNNER_TEMP/attr-set-outs.txt" \
+            | sort -u > "$RUNNER_TEMP/attr-set-paths.txt"
+        fi
+        echo "file=$RUNNER_TEMP/attr-set-paths.txt" >> "$GITHUB_OUTPUT"
