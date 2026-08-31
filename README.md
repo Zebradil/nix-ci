@@ -156,6 +156,8 @@ trust `cache.nixos.org`, that is invisible. If they trust only your key, sign th
 
 ## Versioning
 
+Current release: `v0.1.0` <!-- x-release-please-version -->
+
 Released with [release-please] from Conventional Commits. Pin a full version and let Renovate raise
 the bumps; it resolves the tag to a commit SHA in your repository. There is no floating major tag,
 on purpose: a moving ref silently changes what a pinned workflow runs, which is the one thing
