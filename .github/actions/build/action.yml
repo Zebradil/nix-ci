@@ -157,9 +157,6 @@ runs:
       env:
         ATTR: ${{ inputs.attr }}
         MAX_JOBS: ${{ inputs.max-jobs }}
-        S3_URL: ${{ inputs.cache-s3-url }}
-        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
-        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
       run: |
         set -euo pipefail
         # --skip-cached asks nix-eval-jobs for each attribute's cache status and never queues one a
