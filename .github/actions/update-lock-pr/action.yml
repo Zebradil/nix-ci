@@ -166,7 +166,9 @@ runs:
         cp flake.lock "$RUNNER_TEMP/new-flake.lock"
         git checkout -- flake.lock
 
-        declare -A old_paths
+        # Appended straight to the file the diff step reads, rather than collected in an
+        # associative array: the macOS runners' /bin/bash is 3.2 and has no `declare -A`.
+        : > "$RUNNER_TEMP/pre-update-paths.txt"
         while IFS= read -r target; do
           [[ -z "$target" ]] && continue
           echo "::group::Building pre-update: $target"
@@ -174,7 +176,7 @@ runs:
           # abort the loop; other targets still get built and diffed.
           if nix build --keep-going ".#${target}" --no-link; then
             path=$(nix path-info ".#${target}")
-            old_paths["$target"]="$path"
+            printf '%s=%s\n' "$target" "$path" >> "$RUNNER_TEMP/pre-update-paths.txt"
             echo "Pre-update store path: $path"
           else
             echo "::warning::Pre-update build failed for ${target}; skipping its diff."
@@ -185,10 +187,6 @@ runs:
         # Restore the updated flake.lock for subsequent steps.
         cp "$RUNNER_TEMP/new-flake.lock" flake.lock
 
-        for target in "${!old_paths[@]}"; do
-          printf '%s=%s\n' "$target" "${old_paths[$target]}"
-        done > "$RUNNER_TEMP/pre-update-paths.txt"
-
     - name: Generate nvd diff
       if: ${{ steps.check.outputs.has_changes == 'true' && inputs.diff-targets != '' }}
       shell: bash
@@ -196,18 +194,22 @@ runs:
         pre_paths_file="$RUNNER_TEMP/pre-update-paths.txt"
         diff_output=""
 
-        declare -A old_paths
-        if [[ -f "$pre_paths_file" ]]; then
-          while IFS='=' read -r target path; do
-            [[ -z "$target" ]] && continue
-            old_paths["$target"]="$path"
+        # Store paths never contain '=', so the first field is the target and the rest is
+        # the path. A function rather than an associative array, for bash 3.2 on macOS.
+        pre_update_path() {
+          [[ -f "$pre_paths_file" ]] || return 0
+          while IFS='=' read -r t p; do
+            if [[ "$t" == "$1" ]]; then
+              printf '%s' "$p"
+              return 0
+            fi
           done < "$pre_paths_file"
-        fi
+        }
 
         while IFS= read -r target; do
           [[ -z "$target" ]] && continue
 
-          old_path="${old_paths[$target]:-}"
+          old_path=$(pre_update_path "$target")
           if [[ -z "$old_path" ]]; then
             echo "Skipping $target — pre-update build was not available"
             continue

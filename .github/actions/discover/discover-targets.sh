@@ -2,10 +2,19 @@
 
 set -euo pipefail
 
-declare -A runners
-for pair in ${RUNNER_MAPPING:?RUNNER_MAPPING is required}; do
-	runners["${pair%%:*}"]="${pair#*:}"
-done
+# A lookup function rather than an associative array: the macOS runners' /bin/bash is 3.2,
+# which has neither `declare -A` nor `[[ -v ]]`.
+# Usage: runner_for <nix-system>  - prints the runner label, or returns 1 if unmapped.
+function runner_for() {
+	local sys="${1:?system is required}" pair
+	for pair in ${RUNNER_MAPPING:?RUNNER_MAPPING is required}; do
+		if [[ "${pair%%:*}" == "$sys" ]]; then
+			printf '%s' "${pair#*:}"
+			return 0
+		fi
+	done
+	return 1
+}
 
 targets='[]'
 
@@ -23,7 +32,8 @@ function add_os_target() {
 		attr="${attr}.${attr_suffix}"
 	fi
 
-	if ! [[ -v runners[$sys] ]]; then
+	local runner
+	if ! runner=$(runner_for "$sys"); then
 		echo "::warning::nix-discover: system '$sys' not in the runner mapping, skipping"
 		return 0
 	fi
@@ -31,7 +41,7 @@ function add_os_target() {
 	targets=$(echo "$targets" | jq \
 		--arg a "$attr" \
 		--arg s "$sys" \
-		--arg r "${runners[$sys]}" \
+		--arg r "$runner" \
 		'. + [{"attr":$a,"system":$s,"runner":$r}]')
 }
 
