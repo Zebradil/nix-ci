@@ -22,6 +22,7 @@ Pick the shape that matches your repository.
 Everything under `checks.<system>` is built and published. Put your linters and tests in `checks`
 and `nix flake check` reproduces CI exactly.
 
+<!-- x-release-please-start-version -->
 ```yaml
 # .github/workflows/ci.yaml
 name: CI
@@ -32,7 +33,7 @@ on:
 
 jobs:
   ci:
-    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v0.1.0
+    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1.0.0
     with:
       discovery-types: checks
       runner-mapping: |
@@ -48,6 +49,7 @@ jobs:
       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
+<!-- x-release-please-end -->
 
 Put the cache URL and public key in repository **variables**, not secrets: `vars` are readable by
 fork pull requests and `secrets` are not, so a fork still gets cache reads.
@@ -65,10 +67,11 @@ and exhausts the disk while proving nothing. That strategy builds the genuinely 
 underneath instead — which is what proves the configuration compiles — and publishes the toplevel's
 `.drv` recipe so the target host can realize it from the cache.
 
+<!-- x-release-please-start-version -->
 ```yaml
 jobs:
   ci:
-    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v0.1.0
+    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1.0.0
     with:
       discovery-types: |
         nixosConfigurations
@@ -82,9 +85,11 @@ jobs:
     secrets:
       # ...as above
 ```
+<!-- x-release-please-end -->
 
 ### Updating flake inputs
 
+<!-- x-release-please-start-version -->
 ```yaml
 # .github/workflows/update-pr.yaml
 name: Update flake.lock
@@ -95,7 +100,7 @@ on:
 
 jobs:
   update:
-    uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v0.1.0
+    uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v1.0.0
     with:
       auto-merge: true
       diff-targets: |
@@ -104,6 +109,7 @@ jobs:
       app-id: ${{ secrets.CI_APP_ID }}
       app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
 ```
+<!-- x-release-please-end -->
 
 Configure a GitHub App and pass its credentials. A PR created with `GITHUB_TOKEN` does not fire
 `pull_request` events, so your own CI never runs on it — which defeats auto-merge and leaves the
@@ -131,12 +137,13 @@ resolves against *your* workspace rather than this one ([actions/runner#1348]).
 
 Chaining example, publishing a cache-specific manifest after the build:
 
+<!-- x-release-please-start-version -->
 ```yaml
-      - uses: zebradil/nix-ci/.github/actions/setup-nix@v0.1.0
+      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1.0.0
         with:
           signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
       - id: build
-        uses: zebradil/nix-ci/.github/actions/build@v0.1.0
+        uses: zebradil/nix-ci/.github/actions/build@v1.0.0
         with:
           attr: checks.x86_64-linux.myhost
           strategy: uncached-leaves
@@ -145,6 +152,7 @@ Chaining example, publishing a cache-specific manifest after the build:
         with:
           paths-file: ${{ steps.build.outputs.paths-file }}
 ```
+<!-- x-release-please-end -->
 
 ## Signing
 
