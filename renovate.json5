@@ -15,6 +15,12 @@
       automerge: true,
       matchUpdateTypes: ["minor", "patch", "pin", "digest"],
     },
+    // Self-references are bumped by release-please in the release commit itself; a digest can only
+    // ever name an earlier commit, so pinning them ships actions from the previous release.
+    {
+      matchDepNames: ["zebradil/nix-ci"],
+      enabled: false,
+    },
     // Group PRs for GitHub Action updates into a single PR
     {
       description: "Group GitHub Action updates into a single PR",
