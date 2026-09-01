@@ -66,8 +66,8 @@ outputs:
       published. A file rather than a value because a system closure runs to thousands of paths.
       Chain it into a cache-specific follow-up action — publishing a generation manifest, notifying
       a mirror — that needs to know what this step put in the cache. Populated for both strategies,
-      though by different means: nix-fast-build streams its uploads and reports no single closure,
-      so `attr-set` resolves the set afterwards.
+      and under both it names exactly what was pushed, so a manifest built from it can never
+      reference a path the cache does not serve.
     value: ${{ steps.paths.outputs.file || steps.attr-set-paths.outputs.file }}
 
 runs:
