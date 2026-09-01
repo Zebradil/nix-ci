@@ -299,7 +299,8 @@ runs:
       run: |
         # No signing here: the caller's setup-nix registers the key via nix.conf's
         # secret-key-files, so locally-built paths already carry a signature.
-        xargs -r -a "$STORE_PATHS_FILE" nix copy --to "$CACHE_S3_URL"
+        # `< file` rather than `-a file`: BSD xargs on the macOS runners has no -a.
+        xargs < "$STORE_PATHS_FILE" nix copy --to "$CACHE_S3_URL"
 
     - name: Create or update PR
       if: ${{ steps.check.outputs.has_changes == 'true' }}

@@ -148,7 +148,8 @@ runs:
           exit 0
         fi
         # xargs feeds the paths in batches: a system closure overflows the argument limit.
-        xargs -r -a "$PATHS_FILE" nix copy --to "$S3_URL"
+        # `< file` rather than `-a file`: BSD xargs on the macOS runners has no -a.
+        xargs < "$PATHS_FILE" nix copy --to "$S3_URL"
 
     - name: Build attribute set
       if: ${{ inputs.strategy == 'attr-set' }}
