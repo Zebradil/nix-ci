@@ -163,14 +163,18 @@ runs:
       run: |
         set -euo pipefail
         # --skip-cached asks nix-eval-jobs for each attribute's cache status and never queues one a
-        # substituter can already serve. --copy-to uploads each output closure as its build
-        # finishes, so a long matrix publishes progressively rather than all at the end.
+        # substituter can already serve.
+        #
+        # Deliberately not --copy-to: that uploads only the attrs this run actually built, while
+        # the manifest-facing paths-file below names every attr's closure. An attr substitutable
+        # from an upstream cache but absent from *this* one would then be named in a manifest that
+        # nothing had uploaded, and a mirror would 404 on it. The push below covers exactly the
+        # closure that gets reported, so the two cannot disagree.
         args=(--flake ".#${ATTR}" --skip-cached --no-nom)
         if [[ -n "$MAX_JOBS" ]]; then args+=(--max-jobs "$MAX_JOBS"); fi
-        if [[ -n "$S3_URL" ]]; then args+=(--copy-to "$S3_URL"); fi
         nix run nixpkgs#nix-fast-build -- "${args[@]}"
 
-    - name: Resolve pushed closure
+    - name: Resolve and push the closure
       id: attr-set-paths
       # always(): a partially failed matrix still published what it built, and a follow-up action
       # needs to hear about those paths rather than treat the whole run as having pushed nothing.
@@ -178,6 +182,9 @@ runs:
       shell: bash
       env:
         ATTR: ${{ inputs.attr }}
+        S3_URL: ${{ inputs.cache-s3-url }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
       run: |
         set -euo pipefail
         # Output closures only. Asking for each attribute's *build* closure would name every
@@ -200,5 +207,11 @@ runs:
             > "$RUNNER_TEMP/attr-set-outs.txt" || true
           xargs -r nix-store --query --requisites < "$RUNNER_TEMP/attr-set-outs.txt" \
             | sort -u > "$RUNNER_TEMP/attr-set-paths.txt"
+        fi
+        if [[ -s "$RUNNER_TEMP/attr-set-paths.txt" ]]; then
+          # `nix copy` asks the remote what it already has and sends only the difference, so this
+          # is cheap when most of the closure is already published.
+          # `< file` rather than `-a file`: BSD xargs on the macOS runners has no -a.
+          xargs < "$RUNNER_TEMP/attr-set-paths.txt" nix copy --to "$S3_URL"
         fi
         echo "file=$RUNNER_TEMP/attr-set-paths.txt" >> "$GITHUB_OUTPUT"
