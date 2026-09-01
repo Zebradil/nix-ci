@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.2](https://github.com/Zebradil/nix-ci/compare/v1.0.1...v1.0.2) (2026-09-01)
+
+
+### Fixes
+
+* push exactly the closure the build reports ([d0a1237](https://github.com/Zebradil/nix-ci/commit/d0a12374fa5f60f953c542fd0a2f4849eff6e997))
+
+
+### Documentation
+
+* describe paths-file as the pushed set ([cae03ac](https://github.com/Zebradil/nix-ci/commit/cae03ac90efaa4d00a72e7de7d7f31d49cdde66e))
+
+
+### Refactoring
+
+* keep cache credentials out of the step that no longer uploads ([0afa3ab](https://github.com/Zebradil/nix-ci/commit/0afa3ab54229436fa6aebc631edb089424deaccc))
+
 ## [1.0.1](https://github.com/Zebradil/nix-ci/compare/v1.0.0...v1.0.1) (2026-09-01)
 
 
