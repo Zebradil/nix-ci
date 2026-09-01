@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.1](https://github.com/Zebradil/nix-ci/compare/v1.0.0...v1.0.1) (2026-09-01)
+
+
+### Fixes
+
+* drop bash 4 constructs so the actions run on macOS runners ([1152b08](https://github.com/Zebradil/nix-ci/commit/1152b08b6a5ad0a94ad1a7a70fef9e863f79005e))
+* use a redirect instead of xargs -a for the cache push ([e8ada2a](https://github.com/Zebradil/nix-ci/commit/e8ada2a0c8966c4528a648b9e57c9651be211e6d))
+
+
+### Documentation
+
+* keep the quickstart examples on the current release ([aa30d54](https://github.com/Zebradil/nix-ci/commit/aa30d54e2a9ffcc851c33e763b04446dbc2fd102))
+
 ## [1.0.0](https://github.com/Zebradil/nix-ci/compare/v0.1.0...v1.0.0) (2026-08-31)
 
 

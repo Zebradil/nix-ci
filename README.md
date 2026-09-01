@@ -33,7 +33,7 @@ on:
 
 jobs:
   ci:
-    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1.0.0
+    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1.0.1
     with:
       discovery-types: checks
       runner-mapping: |
@@ -71,7 +71,7 @@ underneath instead — which is what proves the configuration compiles — and p
 ```yaml
 jobs:
   ci:
-    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1.0.0
+    uses: zebradil/nix-ci/.github/workflows/ci.yaml@v1.0.1
     with:
       discovery-types: |
         nixosConfigurations
@@ -100,7 +100,7 @@ on:
 
 jobs:
   update:
-    uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v1.0.0
+    uses: zebradil/nix-ci/.github/workflows/update-pr.yaml@v1.0.1
     with:
       auto-merge: true
       diff-targets: |
@@ -139,11 +139,11 @@ Chaining example, publishing a cache-specific manifest after the build:
 
 <!-- x-release-please-start-version -->
 ```yaml
-      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1.0.0
+      - uses: zebradil/nix-ci/.github/actions/setup-nix@v1.0.1
         with:
           signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
       - id: build
-        uses: zebradil/nix-ci/.github/actions/build@v1.0.0
+        uses: zebradil/nix-ci/.github/actions/build@v1.0.1
         with:
           attr: checks.x86_64-linux.myhost
           strategy: uncached-leaves
@@ -164,7 +164,7 @@ trust `cache.nixos.org`, that is invisible. If they trust only your key, sign th
 
 ## Versioning
 
-Current release: `v1.0.0` <!-- x-release-please-version -->
+Current release: `v1.0.1` <!-- x-release-please-version -->
 
 Released with [release-please] from Conventional Commits. Pin a full version and let Renovate raise
 the bumps; it resolves the tag to a commit SHA in your repository. There is no floating major tag,
