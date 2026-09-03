@@ -169,6 +169,7 @@ runs:
         # Appended straight to the file the diff step reads, rather than collected in an
         # associative array: the macOS runners' /bin/bash is 3.2 and has no `declare -A`.
         : > "$RUNNER_TEMP/pre-update-paths.txt"
+        : > "$RUNNER_TEMP/build-failures.txt"
         while IFS= read -r target; do
           [[ -z "$target" ]] && continue
           echo "::group::Building pre-update: $target"
@@ -180,6 +181,7 @@ runs:
             echo "Pre-update store path: $path"
           else
             echo "::warning::Pre-update build failed for ${target}; skipping its diff."
+            printf -- '- `%s` — pre-update build failed\n' "$target" >> "$RUNNER_TEMP/build-failures.txt"
           fi
           echo "::endgroup::"
         done < "$RUNNER_TEMP/diff-targets.txt"
@@ -221,6 +223,7 @@ runs:
           if ! nix build --keep-going ".#${target}" --no-link; then
             echo "::endgroup::"
             echo "::warning::Post-update build failed for ${target}; skipping its diff."
+            printf -- '- `%s` — post-update build failed\n' "$target" >> "$RUNNER_TEMP/build-failures.txt"
             continue
           fi
           echo "::endgroup::"
@@ -332,6 +335,12 @@ runs:
             printf "> To avoid this in the future, configure a GitHub App token for this workflow.\n\n"
           fi
           printf $'Automated `nix flake update` run.\n\n'
+          if [[ -s "$RUNNER_TEMP/build-failures.txt" ]]; then
+            printf "> [!WARNING]  \n"
+            printf "> Some diff targets failed to build and are missing from the package diff:\n>\n"
+            sed 's/^/> /' "$RUNNER_TEMP/build-failures.txt"
+            printf ">\n> See the workflow run logs for the build output.\n\n"
+          fi
           printf '### Updated inputs\n\n'
           printf '%s\n\n' "$input_summary"
           if [[ -f "$RUNNER_TEMP/nvd-diff.md" ]]; then
