@@ -125,14 +125,14 @@ jobs:
           token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Setup Nix
-        uses: zebradil/nix-ci/.github/actions/setup-nix@v1.0.2 # x-release-please-version
+        uses: zebradil/nix-ci/.github/actions/setup-nix@v1.1.0 # x-release-please-version
         with:
           extra-substituters: ${{ inputs.cache-url }}
           extra-trusted-public-keys: ${{ inputs.cache-public-key }}
           signing-key: ${{ secrets.cache-signing-key }}
 
       - name: Update flake.lock and open PR
-        uses: zebradil/nix-ci/.github/actions/update-lock-pr@v1.0.2 # x-release-please-version
+        uses: zebradil/nix-ci/.github/actions/update-lock-pr@v1.1.0 # x-release-please-version
         with:
           token: ${{ steps.app-token.outputs.token || github.token }}
           has-app-token: ${{ steps.app-token.outputs.token != '' }}
