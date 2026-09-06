@@ -45,7 +45,7 @@ jobs:
       push-to-cache: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
       cache-signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
-      cache-s3-url: ${{ secrets.CACHE_S3_URL }}
+      cache-s3-url: ${{ vars.CACHE_S3_URL }}
       aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
@@ -147,12 +147,36 @@ Chaining example, publishing a cache-specific manifest after the build:
         with:
           attr: checks.x86_64-linux.myhost
           strategy: uncached-leaves
-          cache-s3-url: ${{ secrets.CACHE_S3_URL }}
+          cache-s3-url: ${{ vars.CACHE_S3_URL }}
       - uses: some-org/some-cache/.github/actions/publish@v1
         with:
           paths-file: ${{ steps.build.outputs.paths-file }}
 ```
 <!-- x-release-please-end -->
+
+## Compression
+
+`build` and `update-lock-pr` publish with `compression=zstd&compression-level=6`, appended to
+`cache-s3-url` as query parameters, instead of Nix's xz default. Measured on three NARs spanning the
+compressibility range — a nixpkgs source tree, rustc, and already-compressed `linux-firmware`:
+
+| rustc, 1.0 GB store path | xz | zstd:6 |
+| --- | --- | --- |
+| restore into a fresh store | 6.68 s | 1.52 s |
+| push | 205.7 s | 4.3 s |
+| stored | 221 MB | 301 MB |
+
+Nix decompresses one NAR on one core, and decompression speed is identical at every zstd level, so a
+higher level buys nothing for the machines substituting from the cache. Level 6 is the knee: 12 is 1%
+smaller for twice the push time, and 19 costs as much as xz while still landing larger than it.
+
+Override with the `store-params` input, or by naming a `compression` in `cache-s3-url` itself — a URL
+that already sets one is left untouched. `--option compression zstd` is not an alternative: it is a
+store setting rather than a global one, and Nix ignores it silently.
+
+The push URL is not a secret — it is a bucket name and an endpoint, and writing to it takes the AWS
+credentials, which are. Keeping it in `vars` leaves it readable after the fact and available to fork
+pull requests, so the examples above use `vars.CACHE_S3_URL`.
 
 ## Signing
 

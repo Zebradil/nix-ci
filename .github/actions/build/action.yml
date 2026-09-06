@@ -50,6 +50,15 @@ inputs:
       publishing, which is what a fork pull request should do.
     required: false
     default: ''
+  store-params:
+    description: >
+      Store settings appended to `cache-s3-url` as query parameters, unless the URL already sets
+      `compression` itself. The default publishes zstd rather than Nix's xz: measured on three real
+      NARs, zstd restores 3-6x faster and pushes 15-50x faster for 1-37% more stored bytes, and
+      level 6 is the knee — decompression speed is identical at every zstd level, so a higher one
+      costs push time and returns nothing to the machines substituting from the cache.
+    required: false
+    default: compression=zstd&compression-level=6
   aws-access-key-id:
     description: AWS access key ID for the S3 push.
     required: false
@@ -138,6 +147,7 @@ runs:
       shell: bash
       env:
         S3_URL: ${{ inputs.cache-s3-url }}
+        STORE_PARAMS: ${{ inputs.store-params }}
         PATHS_FILE: ${{ steps.paths.outputs.file }}
         AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
         AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
@@ -146,6 +156,16 @@ runs:
         if [[ ! -s "$PATHS_FILE" ]]; then
           echo "No valid store paths to push."
           exit 0
+        fi
+        # Store settings ride on the URL: `compression` is a BinaryCacheStore setting, so it can
+        # only be set as a query parameter — `--option compression zstd` is silently ignored. A URL
+        # that names a compression of its own is left alone.
+        if [[ -n "$STORE_PARAMS" ]]; then
+          case "$S3_URL" in
+            *compression=*) ;;
+            *\?*) S3_URL="$S3_URL&$STORE_PARAMS" ;;
+            *) S3_URL="$S3_URL?$STORE_PARAMS" ;;
+          esac
         fi
         # xargs feeds the paths in batches: a system closure overflows the argument limit.
         # `< file` rather than `-a file`: BSD xargs on the macOS runners has no -a.
@@ -180,6 +200,7 @@ runs:
       env:
         ATTR: ${{ inputs.attr }}
         S3_URL: ${{ inputs.cache-s3-url }}
+        STORE_PARAMS: ${{ inputs.store-params }}
         AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
         AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
       run: |
@@ -204,6 +225,14 @@ runs:
             > "$RUNNER_TEMP/attr-set-outs.txt" || true
           xargs -r nix-store --query --requisites < "$RUNNER_TEMP/attr-set-outs.txt" \
             | sort -u > "$RUNNER_TEMP/attr-set-paths.txt"
+        fi
+        # Same store-settings normalization as the uncached-leaves push above.
+        if [[ -n "$STORE_PARAMS" ]]; then
+          case "$S3_URL" in
+            *compression=*) ;;
+            *\?*) S3_URL="$S3_URL&$STORE_PARAMS" ;;
+            *) S3_URL="$S3_URL?$STORE_PARAMS" ;;
+          esac
         fi
         if [[ -s "$RUNNER_TEMP/attr-set-paths.txt" ]]; then
           # `nix copy` asks the remote what it already has and sends only the difference, so this
