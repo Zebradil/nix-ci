@@ -13,6 +13,16 @@ description: >
   other action and callers invoke it at job level.
 
 inputs:
+  zebradil-cache:
+    description: >
+      Add the public Zebradil binary cache (https://znix.zebradil.dev) as a substituter and trust
+      both keys that sign into it: `znix.zebradil.dev` (znix and the repositories publishing with
+      its key) and `kasha-ci-1` (kasha's own CI). Kept here so the URL and keys live in one place
+      and a rotation is one release plus Renovate bumps, instead of a variable to edit in every
+      repository. The cache is publicly readable, so this is safe on fork pull requests. Set to
+      `false` to use only `extra-substituters`.
+    required: false
+    default: 'true'
   extra-substituters:
     description: >
       Space-separated Nix substituter URLs to add alongside cache.nixos.org. Safe to pass on fork
@@ -28,7 +38,8 @@ inputs:
     description: >
       Nix binary cache signing private key material (the key itself, not a path). When set, it is
       written to a file and registered as `secret-key-files`, so the daemon signs every path it
-      builds. Leave empty on runs that must not be able to sign, such as fork pull requests.
+      builds. The job fails if the key's public half is not among the trusted keys, since paths
+      signed with a key no consumer trusts are never substituted. Leave empty on runs that must not be able to sign, such as fork pull requests.
     required: false
     default: ''
   extra-conf:
@@ -77,10 +88,28 @@ runs:
       with:
         extra-conf: |
           download-buffer-size = 524288000
-          extra-substituters = ${{ inputs.extra-substituters }}
-          extra-trusted-public-keys = ${{ inputs.extra-trusted-public-keys }}
+          extra-substituters = ${{ inputs.zebradil-cache == 'true' && 'https://znix.zebradil.dev' || '' }} ${{ inputs.extra-substituters }}
+          extra-trusted-public-keys = ${{ inputs.zebradil-cache == 'true' && 'znix.zebradil.dev:nvr0OQFRddbHGopQbyLbLXQnntFBDKp23tqQq+msppw= kasha-ci-1:KNW/sz+Zz800U/IFZ38vH5rvlHtM3Fb0Q/wmDJquG+U=' || '' }} ${{ inputs.extra-trusted-public-keys }}
           ${{ steps.key.outputs.file && format('secret-key-files = {0}', steps.key.outputs.file) || '' }}
           ${{ inputs.extra-conf }}
+
+    # A pasted key that differs from the one consumers trust signs every push uselessly and fails
+    # silently: substituters just reject the paths. Comparing against the effective config also
+    # covers keys added through `extra-conf`.
+    - name: Check signing key is trusted
+      if: steps.key.outputs.file != ''
+      shell: bash
+      env:
+        KEY_FILE: ${{ steps.key.outputs.file }}
+      run: |
+        set -euo pipefail
+        pub="$(nix key convert-secret-to-public < "$KEY_FILE")"
+        read -ra trusted <<< "$(nix config show trusted-public-keys)"
+        for key in "${trusted[@]}"; do
+          [[ "$key" == "$pub" ]] && exit 0
+        done
+        echo "::error::signing key's public half (${pub}) is not a trusted public key; add it to extra-trusted-public-keys or fix the signing key"
+        exit 1
 
     - name: Cache Nix download artefacts
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
