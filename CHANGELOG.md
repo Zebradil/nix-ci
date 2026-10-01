@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/Zebradil/nix-ci/compare/v1.2.0...v1.3.0) (2026-10-01)
+
+
+### Features
+
+* **setup-nix:** disable determinate-nix job summary ([17f4755](https://github.com/Zebradil/nix-ci/commit/17f475597eac92de381bf96d87befee3d012d7c6))
+
 ## [1.2.0](https://github.com/Zebradil/nix-ci/compare/v1.1.0...v1.2.0) (2026-10-01)
 
 
