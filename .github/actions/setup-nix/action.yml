@@ -86,6 +86,7 @@ runs:
         ACTIONS_ID_TOKEN_REQUEST_URL: ''
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       with:
+        summarize: false
         extra-conf: |
           download-buffer-size = 524288000
           extra-substituters = ${{ inputs.zebradil-cache == 'true' && 'https://znix.zebradil.dev' || '' }} ${{ inputs.extra-substituters }}
