@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Zebradil/nix-ci/compare/v1.1.0...v1.2.0) (2026-10-01)
+
+
+### Features
+
+* **setup-nix:** trust the Zebradil cache centrally ([#14](https://github.com/Zebradil/nix-ci/issues/14)) ([3c9f67e](https://github.com/Zebradil/nix-ci/commit/3c9f67e59991fb8147ea9d97c30c39c9cd0e4d65))
+
 ## [1.1.0](https://github.com/Zebradil/nix-ci/compare/v1.0.2...v1.1.0) (2026-09-06)
 
 
