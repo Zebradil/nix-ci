@@ -10,8 +10,9 @@ Three jobs, done once:
   update really changes, as an [nvd] package diff, not just a lock-file hash bump.
 - **Publish to a binary cache** — sign and push what was built, to any S3-compatible cache.
 
-Nothing here assumes a particular cache, hosting provider, or secrets layout. Every site-specific
-value arrives as an input.
+Nothing here assumes a hosting provider or secrets layout, and every site-specific value arrives as
+an input. One exception: `setup-nix` reads from the public Zebradil cache by default (see
+[Zebradil cache](#zebradil-cache)).
 
 ## Quickstart
 
@@ -53,6 +54,9 @@ jobs:
 
 Put the cache URL and public key in repository **variables**, not secrets: `vars` are readable by
 fork pull requests and `secrets` are not, so a fork still gets cache reads.
+
+`cache-url` and `cache-public-key` are for caches other than the Zebradil one, which `setup-nix`
+already adds.
 
 ### A devShell-only flake
 
@@ -185,6 +189,18 @@ daemon builds them and every push is a plain copy. One consequence worth knowing
 *substituted* rather than built keep only their upstream signature. If consumers of your cache also
 trust `cache.nixos.org`, that is invisible. If they trust only your key, sign the closure yourself —
 `setup-nix` exposes `signing-key-file` for exactly that.
+
+`setup-nix` fails the job when the signing key's public half is not among the trusted public keys.
+Paths signed with a key nobody trusts are pushed fine and then rejected by every substituter, so
+without the check a pasted wrong key only shows up as a cache that never hits.
+
+## Zebradil cache
+
+`setup-nix` adds `https://znix.zebradil.dev` as a substituter and trusts both keys that sign into it,
+`znix.zebradil.dev` and `kasha-ci-1`. The URL and keys live only in this action, so a key rotation is
+a nix-ci release that Renovate rolls out, not a variable to edit in every repository. The cache is
+publicly readable, so this needs no secrets and works on fork pull requests. Pass
+`zebradil-cache: false` to opt out.
 
 ## Versioning
 
