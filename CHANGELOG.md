@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/Zebradil/nix-ci/compare/v2.0.0...v2.0.1) (2026-10-02)
+
+
+### Fixes
+
+* file pull request manifests under kasha's shared pr branch ([#19](https://github.com/Zebradil/nix-ci/issues/19)) ([35809ac](https://github.com/Zebradil/nix-ci/commit/35809ac2483476a2c8f4e3afc03aa7583f9f8c69))
+
 ## [2.0.0](https://github.com/Zebradil/nix-ci/compare/v1.3.0...v2.0.0) (2026-10-02)
 
 
