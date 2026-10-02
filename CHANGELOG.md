@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/Zebradil/nix-ci/compare/v1.3.0...v2.0.0) (2026-10-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* publish a kasha manifest after every push ([#17](https://github.com/Zebradil/nix-ci/issues/17))
+
+### Features
+
+* publish a kasha manifest after every push ([#17](https://github.com/Zebradil/nix-ci/issues/17)) ([a436e75](https://github.com/Zebradil/nix-ci/commit/a436e75222368ad2e11c43660ce3b2d239880513))
+
 ## [1.3.0](https://github.com/Zebradil/nix-ci/compare/v1.2.0...v1.3.0) (2026-10-01)
 
 
