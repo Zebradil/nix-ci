@@ -5,15 +5,22 @@ name: Nix CI
 #
 #   1. check     — `nix flake check --no-build` plus optional `nix fmt -- --check`
 #   2. discover  — enumerate flake outputs into a build matrix
-#   3. build     — one job per discovered attribute
+#   3. build     — one job per discovered attribute, pushing what it built and publishing a kasha
+#                  generation manifest for it
+#
+# Every run that has the cache secrets publishes: pushes to the default branch and pull requests
+# from the repository itself alike, so a pull request's build is a cache hit on the branch it
+# merges into. Fork pull requests receive no secrets, so they build without publishing. Publishing
+# from same-repository branches is the same trust boundary as merge access: a branch can edit this
+# workflow and read the signing key anyway.
 #
 # There is no cache-probe job. Both build strategies establish for themselves what is already
 # cached — `attr-set` through nix-fast-build's `--skip-cached`, `uncached-leaves` through
 # `build-set.sh` — so a separate probe would only save spawning a job that exits in seconds.
 #
-# This is the batteries-included path. A repository that needs to do something with the pushed
-# closure — publish a generation manifest, notify a mirror — should call the `build` action
-# directly, since it exposes `paths-file` and this wrapper does not forward outputs.
+# This is the batteries-included path. A repository that needs to do something else with the
+# pushed closure — notify a mirror, say — should call the `build` action directly, since it exposes
+# `paths-file` and this wrapper does not forward outputs.
 #
 # The action refs below are pinned to this workflow's own version and bumped by the release, so a
 # workflow never runs actions from a different release than the one it shipped in.
@@ -24,7 +31,6 @@ name: Nix CI
 #       uses: zebradil/nix-ci/.github/workflows/ci.yaml@v0.1.0
 #       with:
 #         discovery-types: checks
-#         push-to-cache: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
 #       secrets:
 #         cache-signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
 #         cache-s3-url: ${{ secrets.CACHE_S3_URL }}
@@ -85,14 +91,6 @@ on:
         type: boolean
         required: false
         default: false
-      push-to-cache:
-        description: >
-          Publish what was built. Gate this on the pull request coming from the repository itself —
-          a fork has no access to the secrets anyway, and this makes the build job say so rather
-          than fail at the push.
-        type: boolean
-        required: false
-        default: false
       cache-url:
         description: >
           HTTPS URL of a binary cache to use as an extra substituter. Not a secret; source it from
@@ -117,7 +115,9 @@ on:
           is signed as it is produced.
         required: false
       cache-s3-url:
-        description: S3 URL for `nix copy --to`. Empty builds without publishing.
+        description: >
+          S3 URL for `nix copy --to`. Empty builds without publishing, which is what a fork pull
+          request gets, since it receives no secrets.
         required: false
       aws-access-key-id:
         description: AWS access key ID for the S3 push.
@@ -190,12 +190,12 @@ jobs:
         with:
           extra-substituters: ${{ inputs.cache-url }}
           extra-trusted-public-keys: ${{ inputs.cache-public-key }}
-          signing-key: ${{ inputs.push-to-cache && secrets.cache-signing-key || '' }}
+          signing-key: ${{ secrets.cache-signing-key }}
 
       - uses: zebradil/nix-ci/.github/actions/build@v1.3.0 # x-release-please-version
         with:
           attr: ${{ matrix.attr }}
           strategy: ${{ inputs.build-strategy }}
-          cache-s3-url: ${{ inputs.push-to-cache && secrets.cache-s3-url || '' }}
+          cache-s3-url: ${{ secrets.cache-s3-url }}
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}

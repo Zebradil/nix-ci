@@ -26,9 +26,14 @@ description: >
   Note the consequence: paths this runner *substituted* rather than built keep only their upstream
   signature, so consumers of your cache must trust that upstream too.
 
+  Every push is followed by a kasha generation manifest naming exactly what was pushed. Without one
+  the pushed paths are invisible to kasha's mirror-down and retention, and its GC deletes them once
+  they pass the 24h grace window, so a push without a manifest is wasted work.
+
   This action installs nothing. Call `setup-nix` at job level first — a composite action cannot
   invoke a sibling action in the same repository, because a relative `uses:` resolves against the
-  consumer's workspace rather than this repo (actions/runner#1348).
+  consumer's workspace rather than this repo (actions/runner#1348). Actions from other repositories,
+  such as kasha's emit-manifest, nest fine.
 
 inputs:
   attr:
@@ -47,7 +52,8 @@ inputs:
   cache-s3-url:
     description: >
       Target for `nix copy --to`, e.g. `s3://my-bucket?region=eu-central-1`. Empty builds without
-      publishing, which is what a fork pull request should do.
+      publishing. Pass it unconditionally from `vars` and gate publishing on the credentials
+      instead: a fork pull request gets no secrets, so it builds without pushing on its own.
     required: false
     default: ''
   store-params:
@@ -65,6 +71,23 @@ inputs:
     default: ''
   aws-secret-access-key:
     description: AWS secret access key for the S3 push.
+    required: false
+    default: ''
+  kasha-manifest:
+    description: >
+      Publish a kasha generation manifest after every push. Leave on; only kasha's own CI turns it
+      off, to emit with the emit-manifest action from the commit under test instead.
+    required: false
+    default: 'true'
+  kasha-flake:
+    description: Flake id the manifest is filed under (`roots/<flake>/<gen>.json`).
+    required: false
+    default: ${{ github.event.repository.name }}
+  kasha-attr:
+    description: >
+      Retention group for the manifest within its flake and branch. Defaults to `attr`. Must differ
+      between jobs that push disjoint closures, such as one per system, or the newest job's
+      generation evicts the others'.
     required: false
     default: ''
 
@@ -143,6 +166,7 @@ runs:
         echo "file=$RUNNER_TEMP/store-paths.txt" >> "$GITHUB_OUTPUT"
 
     - name: Push store paths
+      id: push-leaves
       if: ${{ always() && inputs.strategy == 'uncached-leaves' && inputs.cache-s3-url != '' }}
       shell: bash
       env:
@@ -241,3 +265,32 @@ runs:
           xargs < "$RUNNER_TEMP/attr-set-paths.txt" nix copy --to "$S3_URL"
         fi
         echo "file=$RUNNER_TEMP/attr-set-paths.txt" >> "$GITHUB_OUTPUT"
+
+    - name: Check for pushed paths
+      id: pushed
+      # `kasha emit` rejects an empty closure, and an empty paths file is the normal case for a
+      # target that was already fully cached, so this skips the manifest rather than fail on it.
+      # A failed push skips it too, so a manifest never names a path the cache does not serve. The
+      # attr-set step needs no such check: it only reports its paths file once the push succeeded.
+      if: ${{ always() && inputs.kasha-manifest == 'true' && inputs.cache-s3-url != '' && steps.push-leaves.outcome != 'failure' }}
+      shell: bash
+      env:
+        PATHS_FILE: ${{ steps.paths.outputs.file || steps.attr-set-paths.outputs.file }}
+      run: |
+        if [[ -n "$PATHS_FILE" && -s "$PATHS_FILE" ]]; then
+          echo "any=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Publish kasha manifest
+      # always(): a partially failed build still pushed what it finished, and those paths need a
+      # manifest too. Best-effort like the push: a broken cache must slow CI down, never fail it.
+      if: ${{ always() && steps.pushed.outputs.any == 'true' }}
+      continue-on-error: true
+      uses: zebradil/kasha/.github/actions/emit-manifest@b2bd91080ef092a19be5edb021469e514ba27d7d # v0.5.0
+      with:
+        flake: ${{ inputs.kasha-flake }}
+        paths-file: ${{ steps.paths.outputs.file || steps.attr-set-paths.outputs.file }}
+        attr: ${{ inputs.kasha-attr || inputs.attr }}
+        s3-url: ${{ inputs.cache-s3-url }}
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
