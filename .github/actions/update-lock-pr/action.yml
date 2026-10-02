@@ -13,7 +13,9 @@ description: >
   it's copied out), check out the repository, and generate a token if downstream CI on the resulting
   PR needs to fire (see `token` / `has-app-token`). Composite actions cannot reference sibling
   actions by relative path — a relative `uses:` resolves against the caller's workspace, not this
-  repo (actions/runner#1348) — so this action nests no other action.
+  repo (actions/runner#1348) — so the only action nested here is kasha's emit-manifest, which
+  publishes a generation manifest after every push. Without one, kasha's GC deletes the pushed
+  paths once they pass its 24h grace window.
 
 inputs:
   token:
@@ -70,6 +72,16 @@ inputs:
     description: AWS secret access key for the S3 cache push.
     required: false
     default: ''
+  kasha-flake:
+    description: Flake id the kasha manifest is filed under (`roots/<flake>/<gen>.json`).
+    required: false
+    default: ${{ github.event.repository.name }}
+  kasha-attr:
+    description: >
+      Retention group for the manifest. A fixed name rather than a target: `diff-targets` can change
+      between runs, and a group must stay stable to be retained as one.
+    required: false
+    default: update
 
 outputs:
   has-changes:
@@ -302,6 +314,7 @@ runs:
         fi
 
     - name: Push post-update builds to cache
+      id: push
       if: ${{ always() && steps.post-paths.outputs.has_paths == 'true' && inputs.cache-s3-url != '' && inputs.aws-access-key-id != '' && inputs.aws-secret-access-key != '' }}
       shell: bash
       env:
@@ -326,6 +339,22 @@ runs:
         fi
         # `< file` rather than `-a file`: BSD xargs on the macOS runners has no -a.
         xargs < "$STORE_PATHS_FILE" nix copy --to "$CACHE_S3_URL"
+
+    - name: Publish kasha manifest
+      # Only after a successful push, so a manifest never names paths the cache does not serve.
+      # Best-effort: a broken cache must not block the update PR.
+      if: ${{ always() && steps.push.outcome == 'success' }}
+      continue-on-error: true
+      uses: zebradil/kasha/.github/actions/emit-manifest@b2bd91080ef092a19be5edb021469e514ba27d7d # v0.5.0
+      with:
+        flake: ${{ inputs.kasha-flake }}
+        paths-file: ${{ steps.post-paths.outputs.path-file }}
+        attr: ${{ inputs.kasha-attr }}
+        gen: ${{ steps.ids.outputs.gen }}
+        branch: ${{ steps.ids.outputs.branch }}
+        s3-url: ${{ inputs.cache-s3-url }}
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
 
     - name: Create or update PR
       if: ${{ steps.check.outputs.has_changes == 'true' }}

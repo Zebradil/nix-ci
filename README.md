@@ -8,7 +8,8 @@ Three jobs, done once:
   actually build it.
 - **Update flake inputs** — run `nix flake update` on a schedule and open a PR that shows what the
   update really changes, as an [nvd] package diff, not just a lock-file hash bump.
-- **Publish to a binary cache** — sign and push what was built, to any S3-compatible cache.
+- **Publish to a binary cache** — sign and push what was built, to any S3-compatible cache, and
+  publish a [kasha] generation manifest for it.
 
 Nothing here assumes a hosting provider or secrets layout, and every site-specific value arrives as
 an input. One exception: `setup-nix` reads from the public Zebradil cache by default (see
@@ -42,8 +43,6 @@ jobs:
         aarch64-darwin:macos-26
       cache-url: ${{ vars.NIX_CACHE_URL }}
       cache-public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      # Forks cannot read secrets, so do not ask them to push.
-      push-to-cache: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
       cache-signing-key: ${{ secrets.CACHE_SIGNING_KEY }}
       cache-s3-url: ${{ vars.CACHE_S3_URL }}
@@ -54,6 +53,10 @@ jobs:
 
 Put the cache URL and public key in repository **variables**, not secrets: `vars` are readable by
 fork pull requests and `secrets` are not, so a fork still gets cache reads.
+
+Every run that can read the secrets publishes — pushes to `main` and pull requests from the
+repository itself — so a pull request's build is already in the cache when it merges. Fork pull
+requests get no secrets and build without publishing.
 
 `cache-url` and `cache-public-key` are for caches other than the Zebradil one, which `setup-nix`
 already adds.
@@ -85,7 +88,6 @@ jobs:
         x86_64-linux:ubuntu-latest
         aarch64-linux:ubuntu-24.04-arm
         aarch64-darwin:macos-26
-      push-to-cache: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
       # ...as above
 ```
@@ -132,14 +134,14 @@ particular, when you need to do something with the pushed closure that the wrapp
 | --- | --- |
 | `setup-nix` | Install Nix, add substituters, restore the two build caches, and register the signing key so builds sign themselves. |
 | `discover` | Enumerate flake outputs into a build matrix. |
-| `build` | Build one target and push it. Exposes `paths-file`. |
-| `update-lock-pr` | Update `flake.lock`, diff, and open or update the PR. Exposes `paths-file`, `gen`, `branch`. |
+| `build` | Build one target, push it, and publish its kasha manifest. Exposes `paths-file`. |
+| `update-lock-pr` | Update `flake.lock`, diff, push the post-update builds with their kasha manifest, and open or update the PR. Exposes `paths-file`, `gen`, `branch`. |
 
 Call `setup-nix` at job level before the others. None of these actions installs Nix itself, because
 a composite action cannot invoke a sibling action in the same repository — a relative `uses:`
 resolves against *your* workspace rather than this one ([actions/runner#1348]).
 
-Chaining example, publishing a cache-specific manifest after the build:
+Chaining example, notifying a mirror after the build:
 
 <!-- x-release-please-start-version -->
 ```yaml
@@ -152,11 +154,24 @@ Chaining example, publishing a cache-specific manifest after the build:
           attr: checks.x86_64-linux.myhost
           strategy: uncached-leaves
           cache-s3-url: ${{ vars.CACHE_S3_URL }}
-      - uses: some-org/some-cache/.github/actions/publish@v1
+      - uses: some-org/some-mirror/.github/actions/notify@v1
         with:
           paths-file: ${{ steps.build.outputs.paths-file }}
 ```
 <!-- x-release-please-end -->
+
+## Kasha manifests
+
+`build` and `update-lock-pr` follow every successful push with a [kasha] generation manifest naming
+exactly the paths pushed. A pushed path no manifest names is invisible to kasha's mirror-down and
+retention, and its GC deletes it once it passes the 24h grace window, so this is not optional.
+
+The manifest is filed under the repository name as the flake id and the built attribute as the
+retention group. Override them with `kasha-flake` and `kasha-attr`. Jobs that push disjoint
+closures — one per system, say — need distinct groups, or the newest job's generation evicts the
+others'. `build` takes `attr` per job, so the default already keeps them apart.
+
+Manifests are best-effort, like the push itself: a broken cache slows CI down, it never fails it.
 
 ## Compression
 
@@ -215,5 +230,6 @@ Each reusable workflow calls its sibling actions at its own exact version, bumpe
 a workflow and the actions it runs never drift apart.
 
 [nvd]: https://git.sr.ht/~khumba/nvd
+[kasha]: https://github.com/Zebradil/kasha
 [release-please]: https://github.com/googleapis/release-please
 [actions/runner#1348]: https://github.com/actions/runner/issues/1348
