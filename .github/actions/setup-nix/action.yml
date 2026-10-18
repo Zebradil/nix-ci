@@ -12,6 +12,14 @@ description: >
   against the consumer's workspace, not this repo — actions/runner#1348), so this action nests no
   other action and callers invoke it at job level.
 
+  A job that grants `id-token: write` (for example to mint a token with octo-sts) hands every step
+  a GitHub OIDC token, and Determinate Nix uses it to log in to FlakeHub on the first `nix` command
+  that sees it. Without a FlakeHub Cache entitlement that login fails, and every substitution in
+  the job then makes a 401 request to cache.flakehub.com before falling back to the next
+  substituter. This action and its siblings blank `ACTIONS_ID_TOKEN_REQUEST_URL` and
+  `ACTIONS_ID_TOKEN_REQUEST_TOKEN` on their own nix steps; a caller in such a job should blank
+  them on its own nix steps as well.
+
 inputs:
   zebradil-cache:
     description: >
@@ -82,7 +90,9 @@ runs:
         # OIDC step and then fails the FlakeHub login, leaving cache.flakehub.com enrolled as a
         # substituter that 401s on every narinfo lookup. The installer skips the login entirely
         # when these are unset or empty, so force them blank. It then logs one info line claiming
-        # the workflow is misconfigured — that line is this comment, not a mistake.
+        # the workflow is misconfigured — that line is this comment, not a mistake. Any later `nix`
+        # invocation that sees these variables logs in the same way, which is why the sibling
+        # actions blank them on every step that runs nix too.
         ACTIONS_ID_TOKEN_REQUEST_URL: ''
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       with:
@@ -101,6 +111,9 @@ runs:
       if: steps.key.outputs.file != ''
       shell: bash
       env:
+        # Same as Install Nix: `nix` would otherwise log in to FlakeHub here.
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         KEY_FILE: ${{ steps.key.outputs.file }}
       run: |
         set -euo pipefail

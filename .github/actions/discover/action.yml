@@ -59,6 +59,10 @@ runs:
       id: discover
       shell: bash
       env:
+        # Blank on every step that runs nix, so a caller's `id-token: write` cannot log Determinate
+        # Nix in to FlakeHub (see setup-nix's Install Nix step).
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         DISCOVERY_TYPES: ${{ inputs.discovery-types }}
         RUNNER_MAPPING: ${{ inputs.runner-mapping }}
         ATTR_FILTER: ${{ inputs.attr-filter }}
