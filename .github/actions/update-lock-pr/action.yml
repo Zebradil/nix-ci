@@ -131,6 +131,10 @@ runs:
       if: ${{ inputs.diff-targets != '' }}
       shell: bash
       env:
+        # Blank on every step that runs nix, so a caller's `id-token: write` cannot log Determinate
+        # Nix in to FlakeHub (see setup-nix's Install Nix step).
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         DIFF_TARGETS: ${{ inputs.diff-targets }}
       run: |
         current_system=$(nix eval --impure --raw --expr 'builtins.currentSystem')
@@ -151,6 +155,9 @@ runs:
 
     - name: Update flake.lock
       shell: bash
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       run: nix flake update
 
     - name: Check for changes
@@ -181,6 +188,9 @@ runs:
     - name: Build pre-update targets
       if: ${{ steps.check.outputs.has_changes == 'true' && inputs.diff-targets != '' }}
       shell: bash
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       run: |
         # Save the updated flake.lock and restore the old one so nix build evaluates the old inputs.
         cp flake.lock "$RUNNER_TEMP/new-flake.lock"
@@ -212,6 +222,9 @@ runs:
     - name: Generate nvd diff
       if: ${{ steps.check.outputs.has_changes == 'true' && inputs.diff-targets != '' }}
       shell: bash
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       run: |
         pre_paths_file="$RUNNER_TEMP/pre-update-paths.txt"
         diff_output=""
@@ -280,6 +293,9 @@ runs:
       # paths still get pushed and are not rebuilt on the next run.
       if: ${{ always() && steps.check.outputs.has_changes == 'true' && inputs.diff-targets != '' }}
       shell: bash
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       run: |
         : > "$RUNNER_TEMP/post-update-paths.txt"
         while IFS= read -r target; do
@@ -318,6 +334,8 @@ runs:
       if: ${{ always() && steps.post-paths.outputs.has_paths == 'true' && inputs.cache-s3-url != '' && inputs.aws-access-key-id != '' && inputs.aws-secret-access-key != '' }}
       shell: bash
       env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         STORE_PATHS_FILE: ${{ steps.post-paths.outputs.path-file }}
         CACHE_S3_URL: ${{ inputs.cache-s3-url }}
         STORE_PARAMS: ${{ inputs.store-params }}
@@ -346,6 +364,9 @@ runs:
       if: ${{ always() && steps.push.outcome == 'success' }}
       continue-on-error: true
       uses: zebradil/kasha/.github/actions/emit-manifest@4e685af9603b3c27f5a59905049e6da3d8f7775f # v0.6.0
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       with:
         flake: ${{ inputs.kasha-flake }}
         paths-file: ${{ steps.post-paths.outputs.path-file }}

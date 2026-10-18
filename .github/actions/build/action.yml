@@ -109,6 +109,10 @@ runs:
       if: ${{ inputs.strategy == 'uncached-leaves' }}
       shell: bash
       env:
+        # Blank on every step that runs nix, so a caller's `id-token: write` cannot log Determinate
+        # Nix in to FlakeHub (see setup-nix's Install Nix step).
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         ATTR: ${{ inputs.attr }}
         MAX_JOBS: ${{ inputs.max-jobs }}
       run: |
@@ -137,6 +141,8 @@ runs:
       if: ${{ always() && inputs.strategy == 'uncached-leaves' && inputs.cache-s3-url != '' }}
       shell: bash
       env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         ATTR: ${{ inputs.attr }}
       run: |
         set -euo pipefail
@@ -170,6 +176,8 @@ runs:
       if: ${{ always() && inputs.strategy == 'uncached-leaves' && inputs.cache-s3-url != '' }}
       shell: bash
       env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         S3_URL: ${{ inputs.cache-s3-url }}
         STORE_PARAMS: ${{ inputs.store-params }}
         PATHS_FILE: ${{ steps.paths.outputs.file }}
@@ -199,6 +207,8 @@ runs:
       if: ${{ inputs.strategy == 'attr-set' }}
       shell: bash
       env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         ATTR: ${{ inputs.attr }}
         MAX_JOBS: ${{ inputs.max-jobs }}
       run: |
@@ -222,6 +232,8 @@ runs:
       if: ${{ always() && inputs.strategy == 'attr-set' && inputs.cache-s3-url != '' }}
       shell: bash
       env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         ATTR: ${{ inputs.attr }}
         S3_URL: ${{ inputs.cache-s3-url }}
         STORE_PARAMS: ${{ inputs.store-params }}
@@ -287,6 +299,9 @@ runs:
       if: ${{ always() && steps.pushed.outputs.any == 'true' }}
       continue-on-error: true
       uses: zebradil/kasha/.github/actions/emit-manifest@4e685af9603b3c27f5a59905049e6da3d8f7775f # v0.6.0
+      env:
+        ACTIONS_ID_TOKEN_REQUEST_URL: ''
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
       with:
         flake: ${{ inputs.kasha-flake }}
         paths-file: ${{ steps.paths.outputs.file || steps.attr-set-paths.outputs.file }}
