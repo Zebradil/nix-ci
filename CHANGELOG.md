@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/Zebradil/nix-ci/compare/v2.0.1...v2.0.2) (2026-10-18)
+
+
+### Fixes
+
+* keep Determinate Nix from logging in to FlakeHub on every nix step ([#23](https://github.com/Zebradil/nix-ci/issues/23)) ([7414ca9](https://github.com/Zebradil/nix-ci/commit/7414ca9d852da2410860eb6bb8fedcacc9e5c432))
+
 ## [2.0.1](https://github.com/Zebradil/nix-ci/compare/v2.0.0...v2.0.1) (2026-10-02)
 
 
