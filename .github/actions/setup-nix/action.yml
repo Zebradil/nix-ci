@@ -84,7 +84,7 @@ runs:
         echo "file=$file" >> "$GITHUB_OUTPUT"
 
     - name: Install Nix
-      uses: DeterminateSystems/determinate-nix-action@e847f25223456b3058e12f7fc9d777b6a6f25060 # v3.23.2
+      uses: DeterminateSystems/determinate-nix-action@f296148a827001a9a82d3685b53210c06e5d3b67 # v3.24.0
       env:
         # A GitHub account without a FlakeHub Cache entitlement still completes the installer's
         # OIDC step and then fails the FlakeHub login, leaving cache.flakehub.com enrolled as a
