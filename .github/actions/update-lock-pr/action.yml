@@ -363,7 +363,7 @@ runs:
       # Best-effort: a broken cache must not block the update PR.
       if: ${{ always() && steps.push.outcome == 'success' }}
       continue-on-error: true
-      uses: zebradil/kasha/.github/actions/emit-manifest@b807e42bb5006ab5fa45a1a27496d1d07cbe230d # v0.9.0
+      uses: zebradil/kasha/.github/actions/emit-manifest@28c3bdaedea0e6659b6aa34d82355f5e096dd114 # v0.13.0
       env:
         ACTIONS_ID_TOKEN_REQUEST_URL: ''
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
