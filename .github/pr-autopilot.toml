@@ -1,0 +1,30 @@
+# Which dependency pull requests merge themselves, and which wait for a human.
+# Engine: https://github.com/Zebradil/pr-autopilot
+enabled = true
+
+# Documentation only — the engine never reads this table (ADR 0012). It records what onboarding
+# concluded about the repository, and why the policy below looks the way it does.
+#
+# release_mode: release-please cuts vX.Y.Z tags and the release PR is merged by hand. Consumers
+#   pin a full version, resolved to a SHA by their own Renovate, so a merged bump reaches them only
+#   through a release a human approves.
+# deploys_from_main: nothing is published from main; the actions run only where a consumer pins them.
+# test_confidence: lint.yaml runs actionlint over the workflows and composite actions, which
+#   catches a renamed input or output but not a behaviour change. The actions themselves run only
+#   in consumers (kasha, sito, scry), so a broken bump surfaces in their CI after the next release.
+[risk]
+release_mode      = "release-please"
+deploys_from_main = false
+test_confidence   = "low"
+criticality       = "normal"
+
+# The only thing the engine consults. Values are verdicts; an update class that is absent here
+# escalates. Low test confidence is offset by the hand-merged release PR standing between a merge
+# here and any consumer.
+[policy]
+patch    = "merge"
+minor    = "merge"
+major    = "escalate"
+digest   = "merge"
+pin      = "merge"
+lockfile = "merge"
