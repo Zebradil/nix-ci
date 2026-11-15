@@ -9,6 +9,16 @@
     'renovate[bot]@users.noreply.github.com',
     'github-actions[bot]@users.noreply.github.com',
   ],
+  // Machine-readable upgrade list for pr-autopilot, which decides a verdict per update
+  // class. Without it the class is recovered from the pull request table or from version
+  // arithmetic, and a grouped PR — the github-actions group below is one — is exactly where
+  // that guesswork gets a class wrong. A PR carrying several upgrades takes the most
+  // conservative verdict among them.
+  //
+  // It has to be prHeader: prBodyNotes is compiled once per upgrade, with only that upgrade in
+  // scope, so the loop below renders an empty list. prFooter has the right scope but replaces
+  // Renovate's own attribution line.
+  prHeader: '<!-- pr-autopilot:upgrades [{{#each upgrades}}{"depName":"{{{depName}}}","updateType":"{{{updateType}}}","currentValue":"{{{currentValue}}}","newValue":"{{{newValue}}}","manager":"{{{manager}}}"}{{#unless @last}},{{/unless}}{{/each}}] -->',
   packageRules: [
     // Enable automerging for non-major updates to all dependencies
     {
