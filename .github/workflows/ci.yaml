@@ -80,17 +80,6 @@ on:
         type: boolean
         required: false
         default: false
-      pre-instantiate-checks:
-        description: >
-          Force each check's `drvPath` before running `nix flake check`. Only needed when a check's
-          closure contains source paths created during evaluation: under lazy trees, `--no-build`
-          evaluates a check's `outPath` without instantiating it, so those paths are known by hash
-          yet never written to the store, and the check then fails with "path '...' is not valid".
-          Instantiating first materializes them. A Nix-version-specific workaround; leave it off
-          unless you hit that error.
-        type: boolean
-        required: false
-        default: false
       cache-url:
         description: >
           HTTPS URL of a binary cache to use as an extra substituter. Not a secret; source it from
@@ -139,15 +128,6 @@ jobs:
         with:
           extra-substituters: ${{ inputs.cache-url }}
           extra-trusted-public-keys: ${{ inputs.cache-public-key }}
-
-      - name: Pre-instantiate checks
-        if: ${{ inputs.check-flake && inputs.pre-instantiate-checks }}
-        # One eval for all checks, reusing a single flake evaluation instead of cold-loading it once
-        # per attribute as a shell loop would.
-        run: |
-          system=$(nix eval --raw --impure --expr builtins.currentSystem)
-          nix eval --json ".#checks.${system}" \
-            --apply 'builtins.mapAttrs (_: c: c.drvPath)' >/dev/null
 
       - name: Check flake
         if: ${{ inputs.check-flake }}

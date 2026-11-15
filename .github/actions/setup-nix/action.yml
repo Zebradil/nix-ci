@@ -1,6 +1,6 @@
 name: Setup Nix
 description: >
-  Install Determinate Nix on a GitHub Actions runner and configure it for flake CI: extra
+  Install upstream Nix on a GitHub Actions runner and configure it for flake CI: extra
   substituters, a GitHub Actions cache for Nix's download artefacts, and — when a signing key is
   supplied — a store that signs everything it builds.
 
@@ -11,14 +11,6 @@ description: >
   Composite actions cannot reference sibling actions by relative path (a relative `uses:` resolves
   against the consumer's workspace, not this repo — actions/runner#1348), so this action nests no
   other action and callers invoke it at job level.
-
-  A job that grants `id-token: write` (for example to mint a token with octo-sts) hands every step
-  a GitHub OIDC token, and Determinate Nix uses it to log in to FlakeHub on the first `nix` command
-  that sees it. Without a FlakeHub Cache entitlement that login fails, and every substitution in
-  the job then makes a 401 request to cache.flakehub.com before falling back to the next
-  substituter. This action and its siblings blank `ACTIONS_ID_TOKEN_REQUEST_URL` and
-  `ACTIONS_ID_TOKEN_REQUEST_TOKEN` on their own nix steps; a caller in such a job should blank
-  them on its own nix steps as well.
 
 inputs:
   zebradil-cache:
@@ -84,20 +76,10 @@ runs:
         echo "file=$file" >> "$GITHUB_OUTPUT"
 
     - name: Install Nix
-      uses: DeterminateSystems/determinate-nix-action@16f94ba7aae399b9f9077c254b6719ec6de7e3e3 # v3.24.2
-      env:
-        # A GitHub account without a FlakeHub Cache entitlement still completes the installer's
-        # OIDC step and then fails the FlakeHub login, leaving cache.flakehub.com enrolled as a
-        # substituter that 401s on every narinfo lookup. The installer skips the login entirely
-        # when these are unset or empty, so force them blank. It then logs one info line claiming
-        # the workflow is misconfigured — that line is this comment, not a mistake. Any later `nix`
-        # invocation that sees these variables logs in the same way, which is why the sibling
-        # actions blank them on every step that runs nix too.
-        ACTIONS_ID_TOKEN_REQUEST_URL: ''
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
+      uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
       with:
-        summarize: false
-        extra-conf: |
+        # The action already sets flakes, KVM, `max-jobs = auto` and a github.com access token.
+        extra_nix_config: |
           download-buffer-size = 524288000
           extra-substituters = ${{ inputs.zebradil-cache == 'true' && 'https://znix.zebradil.dev' || '' }} ${{ inputs.extra-substituters }}
           extra-trusted-public-keys = ${{ inputs.zebradil-cache == 'true' && 'znix.zebradil.dev:nvr0OQFRddbHGopQbyLbLXQnntFBDKp23tqQq+msppw= kasha-ci-1:KNW/sz+Zz800U/IFZ38vH5rvlHtM3Fb0Q/wmDJquG+U=' || '' }} ${{ inputs.extra-trusted-public-keys }}
@@ -111,9 +93,6 @@ runs:
       if: steps.key.outputs.file != ''
       shell: bash
       env:
-        # Same as Install Nix: `nix` would otherwise log in to FlakeHub here.
-        ACTIONS_ID_TOKEN_REQUEST_URL: ''
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ''
         KEY_FILE: ${{ steps.key.outputs.file }}
       run: |
         set -euo pipefail
