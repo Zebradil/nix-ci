@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/Zebradil/nix-ci/compare/v2.0.2...v3.0.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* install upstream Nix instead of Determinate Nix ([#28](https://github.com/Zebradil/nix-ci/issues/28))
+
+### Features
+
+* install upstream Nix instead of Determinate Nix ([#28](https://github.com/Zebradil/nix-ci/issues/28)) ([10f9cb5](https://github.com/Zebradil/nix-ci/commit/10f9cb5609ea9f27f02149a8383260fcb0d29fb5))
+
 ## [2.0.2](https://github.com/Zebradil/nix-ci/compare/v2.0.1...v2.0.2) (2026-10-18)
 
 
