@@ -33,8 +33,16 @@ summarize() {
 		# /nix/store/<32-char hash>- is 44 characters.
 		def name: .[44:];
 
-		[inputs | fromjson? // empty | select(type == "object")] as $ev
-		| ($ev | map(select(.action == "start") | {key: .id, value: .}) | from_entries) as $start
+		[inputs | select(length > 0)] as $lines
+		| [$lines[] | fromjson? // empty | select(type == "object")] as $ev
+		| ($ev | map(select(.action == "start"))) as $starts
+		| def dups(f): length - (map(f) | unique | length);
+		("nix-log-summary: \($lines | length) lines, \(($lines | length) - ($ev | length)) unparseable, "
+			+ "\($starts | dups(.id)) duplicate activity starts, "
+			+ "\($starts | map(select(.type == 108)) | dups(.fields[0])) duplicate substitutions, "
+			+ "\($starts | map(select(.type == 105)) | dups(.fields[0])) duplicate builds\n"
+			| stderr) as $_
+		| ($starts | map({key: .id, value: .}) | from_entries) as $start
 		| (reduce ($ev[] | select(.action == "result" and .type == 105)) as $r ({};
 			.[$r.id] = ([.[$r.id] // 0, $r.fields[0]] | max))) as $done
 		| def subst_of($id; $depth):
@@ -110,8 +118,10 @@ self_test() {
 		{"action":"start","id":8,"parent":0,"type":105,"fields":["$d","",1,1]}
 		{"action":"st{"action":"stop","id":8}
 	EOF
-	got=$(summarize "$log")
 	local want
+	got=$(summarize "$log" 2>"$dir/stats")
+	want='nix-log-summary: 14 lines, 1 unparseable, 1 duplicate activity starts, 1 duplicate substitutions, 0 duplicate builds'
+	[[ "$(<"$dir/stats")" == "$want" ]] || { printf 'self-test FAILED (stats)\ngot:  %s\nwant: %s\n' "$(<"$dir/stats")" "$want" >&2; return 1; }
 	# shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
 	for want in \
 		'| `https://a.example` | 1 | 3 MiB |' \
@@ -125,7 +135,7 @@ self_test() {
 	[[ "$got" == *'foo-1.0'*'bar-2.0'* ]] || { echo "self-test FAILED (download order)" >&2; return 1; }
 
 	: >"$log"
-	got=$(summarize "$log")
+	got=$(summarize "$log" 2>/dev/null)
 	[[ "$got" == *"Nothing was downloaded or built."* ]] || { echo "self-test FAILED (empty log)" >&2; return 1; }
 
 	echo "self-test OK"
