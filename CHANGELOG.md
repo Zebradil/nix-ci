@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/Zebradil/nix-ci/compare/v3.0.0...v3.1.0) (2026-11-16)
+
+
+### Features
+
+* **build:** summarize Nix downloads and builds in the job summary ([#31](https://github.com/Zebradil/nix-ci/issues/31)) ([bdba665](https://github.com/Zebradil/nix-ci/commit/bdba665e3fc837920f8c97194ac598dc8afda299))
+
 ## [3.0.0](https://github.com/Zebradil/nix-ci/compare/v2.0.2...v3.0.0) (2026-11-15)
 
 
