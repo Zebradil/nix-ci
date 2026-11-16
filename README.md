@@ -134,7 +134,7 @@ particular, when you need to do something with the pushed closure that the wrapp
 | --- | --- |
 | `setup-nix` | Install Nix, add substituters, restore the two build caches, and register the signing key so builds sign themselves. |
 | `discover` | Enumerate flake outputs into a build matrix. |
-| `build` | Build one target, push it, and publish its kasha manifest. Exposes `paths-file`. |
+| `build` | Build one target, push it, publish its kasha manifest, and write a job summary of what was downloaded and built. Exposes `paths-file`. |
 | `update-lock-pr` | Update `flake.lock`, diff, push the post-update builds with their kasha manifest, and open or update the PR. Exposes `paths-file`, `gen`, `branch`. |
 
 Call `setup-nix` at job level before the others. None of these actions installs Nix itself, because
@@ -172,6 +172,14 @@ closures — one per system, say — need distinct groups, or the newest job's g
 others'. `build` takes `attr` per job, so the default already keeps them apart.
 
 Manifests are best-effort, like the push itself: a broken cache slows CI down, it never fails it.
+
+## Job summary
+
+`build` ends with a job summary: how many paths each substituter served and how many compressed
+bytes they took, the largest downloads, and every derivation built on the runner. It is rendered
+from the structured log that `setup-nix` turns on with nix.conf's `json-log-path`. The daemon
+writes it, so it costs no extra requests and covers every substitution and build in the job,
+nix-fast-build's included. A job that set Nix up some other way gets no summary.
 
 ## Compression
 

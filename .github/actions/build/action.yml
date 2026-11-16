@@ -294,3 +294,18 @@ runs:
         s3-url: ${{ inputs.cache-s3-url }}
         aws-access-key-id: ${{ inputs.aws-access-key-id }}
         aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+
+    - name: Summarize downloads and builds
+      # always(): a failed build's summary shows how far it got. Diagnostics only, so it never
+      # fails the job.
+      if: ${{ always() }}
+      continue-on-error: true
+      shell: bash
+      run: |
+        set -euo pipefail
+        log=$(nix config show json-log-path)
+        if [[ -z "$log" || ! -f "$log" ]]; then
+          echo "No Nix JSON log (json-log-path='${log}'); set up Nix with this repo's setup-nix action to get a summary."
+          exit 0
+        fi
+        "$GITHUB_ACTION_PATH/nix-log-summary.sh" "$log" >> "$GITHUB_STEP_SUMMARY"
