@@ -79,8 +79,11 @@ runs:
       uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
       with:
         # The action already sets flakes, KVM, `max-jobs = auto` and a github.com access token.
+        # `json-log-path` records every download and build as structured events; the build
+        # action's job summary is rendered from it.
         extra_nix_config: |
           download-buffer-size = 524288000
+          json-log-path = ${{ runner.temp }}/nix-log.jsonl
           extra-substituters = ${{ inputs.zebradil-cache == 'true' && 'https://znix.zebradil.dev' || '' }} ${{ inputs.extra-substituters }}
           extra-trusted-public-keys = ${{ inputs.zebradil-cache == 'true' && 'znix.zebradil.dev:nvr0OQFRddbHGopQbyLbLXQnntFBDKp23tqQq+msppw= kasha-ci-1:KNW/sz+Zz800U/IFZ38vH5rvlHtM3Fb0Q/wmDJquG+U=' || '' }} ${{ inputs.extra-trusted-public-keys }}
           ${{ steps.key.outputs.file && format('secret-key-files = {0}', steps.key.outputs.file) || '' }}

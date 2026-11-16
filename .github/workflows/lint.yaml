@@ -20,6 +20,10 @@ jobs:
       - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
       - run: nix run nixpkgs#actionlint -- -color
       - run: nix shell nixpkgs#shellcheck -c shellcheck .github/actions/*/*.sh
+      - name: Script self-tests
+        run: |
+          .github/actions/build/build-set.sh --self-test
+          .github/actions/build/nix-log-summary.sh --self-test
 
       # The reusable workflows pin the sibling actions they call. Nothing bumps those refs
       # automatically — neither GITHUB_TOKEN nor an app without the Workflows permission may write
