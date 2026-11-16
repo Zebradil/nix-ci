@@ -345,7 +345,7 @@ runs:
       # Best-effort: a broken cache must not block the update PR.
       if: ${{ always() && steps.push.outcome == 'success' }}
       continue-on-error: true
-      uses: zebradil/kasha/.github/actions/emit-manifest@28c3bdaedea0e6659b6aa34d82355f5e096dd114 # v0.13.0
+      uses: zebradil/kasha/.github/actions/emit-manifest@1525069e6f1fbde759ba7bff8a34bb213b28b307 # v0.14.0
       with:
         flake: ${{ inputs.kasha-flake }}
         paths-file: ${{ steps.post-paths.outputs.path-file }}
