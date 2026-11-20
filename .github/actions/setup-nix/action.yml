@@ -76,7 +76,7 @@ runs:
         echo "file=$file" >> "$GITHUB_OUTPUT"
 
     - name: Install Nix
-      uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      uses: cachix/install-nix-action@bb0495a1086c46893eee56f32fd192dfe4a15bb9 # v32.0.0
       with:
         # The action already sets flakes, KVM, `max-jobs = auto` and a github.com access token.
         # `json-log-path` records every download and build as structured events; the build
