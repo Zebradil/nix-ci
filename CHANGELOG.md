@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/Zebradil/nix-ci/compare/v3.1.0...v3.2.0) (2026-11-25)
+
+
+### Features
+
+* build in a runner-declared remote store and push to a kasha box ([#37](https://github.com/Zebradil/nix-ci/issues/37)) ([d8b1275](https://github.com/Zebradil/nix-ci/commit/d8b12752b691579cec6ac22b48c31dde032bf91b))
+
 ## [3.1.0](https://github.com/Zebradil/nix-ci/compare/v3.0.0...v3.1.0) (2026-11-16)
 
 
