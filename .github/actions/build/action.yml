@@ -286,7 +286,7 @@ runs:
       # manifest too. Best-effort like the push: a broken cache must slow CI down, never fail it.
       if: ${{ always() && steps.pushed.outputs.any == 'true' }}
       continue-on-error: true
-      uses: zebradil/kasha/.github/actions/emit-manifest@abc1c01b0eeabd5fd9105d7731e6e1a97a647d20 # v0.17.0
+      uses: zebradil/kasha/.github/actions/emit-manifest@68d848725aa1536ca4113d5b61a6d5951168662b # v0.18.0
       with:
         flake: ${{ inputs.kasha-flake }}
         paths-file: ${{ steps.paths.outputs.file || steps.attr-set-paths.outputs.file }}
