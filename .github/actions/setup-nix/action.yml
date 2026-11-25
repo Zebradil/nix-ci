@@ -1,6 +1,7 @@
 name: Setup Nix
 description: >
-  Install upstream Nix on a GitHub Actions runner and configure it for flake CI: extra
+  Install upstream Nix on a GitHub Actions runner, or reuse the Nix a runner image already ships,
+  and configure it for flake CI: extra
   substituters, a GitHub Actions cache for Nix's download artefacts, and — when a signing key is
   supplied — a store that signs everything it builds.
 
@@ -75,19 +76,54 @@ runs:
         ( umask 077; printf '%s' "$SIGNING_KEY" > "$file" )
         echo "file=$file" >> "$GITHUB_OUTPUT"
 
-    - name: Install Nix
-      uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
-      with:
-        # The action already sets flakes, KVM, `max-jobs = auto` and a github.com access token.
+    - name: Compose Nix configuration
+      id: conf
+      shell: bash
+      env:
         # `json-log-path` records every download and build as structured events; the build
         # action's job summary is rendered from it.
-        extra_nix_config: |
+        CONF: |
           download-buffer-size = 524288000
           json-log-path = ${{ runner.temp }}/nix-log.jsonl
           extra-substituters = ${{ inputs.zebradil-cache == 'true' && 'https://znix.zebradil.dev' || '' }} ${{ inputs.extra-substituters }}
           extra-trusted-public-keys = ${{ inputs.zebradil-cache == 'true' && 'znix.zebradil.dev:nvr0OQFRddbHGopQbyLbLXQnntFBDKp23tqQq+msppw= kasha-ci-1:KNW/sz+Zz800U/IFZ38vH5rvlHtM3Fb0Q/wmDJquG+U=' || '' }} ${{ inputs.extra-trusted-public-keys }}
           ${{ steps.key.outputs.file && format('secret-key-files = {0}', steps.key.outputs.file) || '' }}
           ${{ inputs.extra-conf }}
+      run: |
+        set -euo pipefail
+        # A runner image that ships Nix (a self-hosted runner pod, say) keeps it: installing a
+        # second Nix needs root and would replace the store the image is set up around.
+        if command -v nix >/dev/null; then
+          echo "preinstalled=true" >> "$GITHUB_OUTPUT"
+        fi
+        delim="EOF_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+        printf 'conf<<%s\n%s\n%s\n' "$delim" "$CONF" "$delim" >> "$GITHUB_OUTPUT"
+
+    - name: Install Nix
+      if: steps.conf.outputs.preinstalled != 'true'
+      uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
+      with:
+        # The action already sets flakes, KVM, `max-jobs = auto` and a github.com access token.
+        extra_nix_config: ${{ steps.conf.outputs.conf }}
+
+    # The image's nix.conf carries the store settings, so these lines go to the user's nix.conf,
+    # which Nix reads on top of it. With a single-user store every setting applies; under a
+    # daemon, ones that need a trusted user (substituters, keys) take effect only for one.
+    - name: Configure preinstalled Nix
+      if: steps.conf.outputs.preinstalled == 'true'
+      shell: bash
+      env:
+        CONF: ${{ steps.conf.outputs.conf }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        dir="${XDG_CONFIG_HOME:-$HOME/.config}/nix"
+        mkdir -p "$dir"
+        ( umask 077
+          printf '%s\n' "$CONF" >> "$dir/nix.conf"
+          # What the installer would add: flake fetches from GitHub without the anonymous rate limit.
+          printf 'access-tokens = github.com=%s\n' "$GITHUB_TOKEN" >> "$dir/nix.conf" )
+        nix --version
 
     # A pasted key that differs from the one consumers trust signs every push uselessly and fails
     # silently: substituters just reject the paths. Comparing against the effective config also

@@ -132,7 +132,7 @@ particular, when you need to do something with the pushed closure that the wrapp
 
 | Action | Purpose |
 | --- | --- |
-| `setup-nix` | Install Nix, add substituters, restore the two build caches, and register the signing key so builds sign themselves. |
+| `setup-nix` | Install Nix (or reuse one the runner image ships), add substituters, restore the two build caches, and register the signing key so builds sign themselves. |
 | `discover` | Enumerate flake outputs into a build matrix. |
 | `build` | Build one target, push it, publish its kasha manifest, and write a job summary of what was downloaded and built. Exposes `paths-file`. |
 | `update-lock-pr` | Update `flake.lock`, diff, push the post-update builds with their kasha manifest, and open or update the PR. Exposes `paths-file`, `gen`, `branch`. |
@@ -216,6 +216,19 @@ trust `cache.nixos.org`, that is invisible. If they trust only your key, sign th
 `setup-nix` fails the job when the signing key's public half is not among the trusted public keys.
 Paths signed with a key nobody trusts are pushed fine and then rejected by every substituter, so
 without the check a pasted wrong key only shows up as a cache that never hits.
+
+## Remote store
+
+A self-hosted runner can send builds to a shared remote store by setting `NIX_CI_STORE` in its
+environment, for example `ssh-ng://nixci@builder?ssh-key=/etc/nixci/key`. `build` then evaluates on
+the runner and builds, queries and pushes in that store; callers change nothing, and hosted legs of the
+same matrix, which lack the variable, behave as before. The store user may be untrusted: only
+content-addressed recipes and sources are uploaded to it.
+
+Such a store's daemon signs nothing for the runner, so the push signs instead: it adds `setup-nix`'s
+key as the destination's `secret-key` setting, and every pushed path carries your signature. To push to
+a kasha box rather than S3, pass its `https://` URL as `cache-s3-url` and its write token as
+`cache-token`; the token goes only to that host, as the netrc password.
 
 ## Zebradil cache
 
