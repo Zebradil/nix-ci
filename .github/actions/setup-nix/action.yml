@@ -106,9 +106,11 @@ runs:
         # The action already sets flakes, KVM, `max-jobs = auto` and a github.com access token.
         extra_nix_config: ${{ steps.conf.outputs.conf }}
 
-    # The image's nix.conf carries the store settings, so these lines go to the user's nix.conf,
-    # which Nix reads on top of it. With a single-user store every setting applies; under a
-    # daemon, ones that need a trusted user (substituters, keys) take effect only for one.
+    # The runner's own configuration stays in effect; these settings go to a job-scoped file
+    # listed first in NIX_USER_CONF_FILES, where the first file wins. RUNNER_TEMP is emptied after
+    # every job, so neither the token nor the key path outlives it on a long-lived runner. With a
+    # single-user store every setting applies; under a daemon, ones that need a trusted user
+    # (substituters, keys) take effect only for one, and the build action signs on push instead.
     - name: Configure preinstalled Nix
       if: steps.conf.outputs.preinstalled == 'true'
       shell: bash
@@ -117,12 +119,20 @@ runs:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        dir="${XDG_CONFIG_HOME:-$HOME/.config}/nix"
-        mkdir -p "$dir"
+        conf="$RUNNER_TEMP/nix-ci.conf"
         ( umask 077
-          printf '%s\n' "$CONF" >> "$dir/nix.conf"
-          # What the installer would add: flake fetches from GitHub without the anonymous rate limit.
-          printf 'access-tokens = github.com=%s\n' "$GITHUB_TOKEN" >> "$dir/nix.conf" )
+          {
+            echo 'extra-experimental-features = nix-command flakes'
+            # What the installer would add: flake fetches from GitHub without the anonymous rate
+            # limit. `extra-` keeps the runner's tokens for other hosts.
+            if [[ "$GITHUB_SERVER_URL" == "https://github.com" ]]; then
+              echo "extra-access-tokens = github.com=${GITHUB_TOKEN}"
+            fi
+            printf '%s\n' "$CONF"
+          } > "$conf" )
+        # shortcut: without NIX_USER_CONF_FILES only the XDG_CONFIG_HOME file is kept, not
+        # XDG_CONFIG_DIRS; add those if a runner image ever relies on them.
+        echo "NIX_USER_CONF_FILES=${conf}:${NIX_USER_CONF_FILES:-${XDG_CONFIG_HOME:-$HOME/.config}/nix/nix.conf}" >> "$GITHUB_ENV"
         nix --version
 
     # A pasted key that differs from the one consumers trust signs every push uselessly and fails

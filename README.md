@@ -207,11 +207,12 @@ pull requests, so the examples above use `vars.CACHE_S3_URL`.
 
 ## Signing
 
-`setup-nix` registers the signing key as nix.conf `secret-key-files`, so paths are signed as the
-daemon builds them and every push is a plain copy. One consequence worth knowing: paths the runner
-*substituted* rather than built keep only their upstream signature. If consumers of your cache also
-trust `cache.nixos.org`, that is invisible. If they trust only your key, sign the closure yourself —
-`setup-nix` exposes `signing-key-file` for exactly that.
+`setup-nix` registers the signing key as nix.conf `secret-key-files`, so a daemon that honours it
+signs paths as it builds them. `build` also signs every path as it pushes, through the destination's
+`secret-key` setting: a remote store's daemon, or a local one the runner is not trusted by, ignores
+`secret-key-files`, and substituted paths would otherwise keep only their upstream signature. Every
+pushed path therefore carries your signature. `setup-nix` still exposes `signing-key-file` for pushes
+made outside `build`.
 
 `setup-nix` fails the job when the signing key's public half is not among the trusted public keys.
 Paths signed with a key nobody trusts are pushed fine and then rejected by every substituter, so
@@ -223,10 +224,12 @@ A self-hosted runner can send builds to a shared remote store by setting `NIX_CI
 environment, for example `ssh-ng://nixci@builder?ssh-key=/etc/nixci/key`. `build` then evaluates on
 the runner and builds, queries and pushes in that store; callers change nothing, and hosted legs of the
 same matrix, which lack the variable, behave as before. The store user may be untrusted: only
-content-addressed recipes and sources are uploaded to it.
+content-addressed recipes and sources are uploaded to it. The store must build for the runner's own
+system, since `uncached-leaves` filters derivations by it. Pushes are signed as described under
+[Signing](#signing).
 
-Such a store's daemon signs nothing for the runner, so the push signs instead: it adds `setup-nix`'s
-key as the destination's `secret-key` setting, and every pushed path carries your signature. To push to
+A runner image that ships Nix keeps it: `setup-nix` writes its settings to a job-scoped file that it
+lists first in `NIX_USER_CONF_FILES`, so the runner's own configuration still applies. To push to
 a kasha box rather than S3, pass its `https://` URL as `cache-s3-url` and its write token as
 `cache-token`; the token goes only to that host, as the netrc password.
 

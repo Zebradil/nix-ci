@@ -21,18 +21,17 @@ description: >
   every one of its build paths ends in realizing the toplevel derivation. Its uploader also
   converts `.drv` paths to outputs, so it can never publish a recipe.
 
-  Signing is not done here, except with a remote store (below). The caller's `setup-nix` registers
-  the key as nix.conf `secret-key-files`, so paths are signed as the daemon builds them and the
-  push is a plain copy. Note the consequence: paths this runner *substituted* rather than built keep only their upstream
-  signature, so consumers of your cache must trust that upstream too.
+  Signing: the caller's `setup-nix` registers the key as nix.conf `secret-key-files`, and the push
+  signs every path with it as it uploads (the `secret-key` store setting). That covers stores whose
+  daemon ignores `secret-key-files` (a remote store, or a local daemon the runner is not trusted
+  by), and substituted paths carry the caller's signature too.
 
   Remote store: when the runner's environment sets `NIX_CI_STORE` to a store URL (for example
   `ssh-ng://user@builder?ssh-key=…`), evaluation stays on the runner and every build, query and
   push goes to that store. The runner declares it, not the caller, so a matrix that mixes such
   runners with hosted ones needs no per-leg settings. Its user may be untrusted: nothing unsigned
-  is ever uploaded to it except content-addressed recipes and sources. Its daemon does not sign
-  what it builds, so the push signs on the way out with `setup-nix`'s key (the `secret-key` store
-  setting). In this mode every pushed path, built or substituted, carries the caller's signature.
+  is ever uploaded to it except content-addressed recipes and sources. It must build for the
+  runner's own system: `uncached-leaves` filters derivations by the runner's `system`.
 
   Every push is followed by a kasha generation manifest naming exactly what was pushed. Without one
   the pushed paths are invisible to kasha's mirror-down and retention, and its GC deletes them once
@@ -60,8 +59,9 @@ inputs:
   cache-s3-url:
     description: >
       Target for `nix copy --to`, e.g. `s3://my-bucket?region=eu-central-1`, or a kasha box's
-      `https://` URL together with `cache-token`. Empty builds without publishing. Pass it
-      unconditionally from `vars` and gate publishing on the credentials instead: a fork pull request gets no secrets, so it builds without pushing on its own.
+      `https://` URL together with `cache-token`; a box refuses writes without the token, so pass
+      a box URL only when the token is available. Empty builds without publishing. An S3 URL can
+      be passed unconditionally from `vars`, gating publishing on the credentials instead: a fork pull request gets no secrets, so it builds without pushing on its own.
     required: false
     default: ''
   store-params:

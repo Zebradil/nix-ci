@@ -17,7 +17,14 @@ with_param() {
 
 cache_host() {
 	local host="${1#*://}"
-	printf '%s' "${host%%[/?:]*}"
+	host="${host%%[/?]*}"
+	host="${host##*@}"
+	if [[ "$host" == \[* ]]; then
+		host="${host#\[}"
+		printf '%s' "${host%%]*}"
+	else
+		printf '%s' "${host%%:*}"
+	fi
 }
 
 self_test() {
@@ -25,6 +32,8 @@ self_test() {
 	[[ "$(with_param 's3://b?region=x' a=1)" == 's3://b?region=x&a=1' ]] || { echo "self-test FAILED (second param)" >&2; return 1; }
 	[[ "$(cache_host 'https://box.lan:5000/x?y=1')" == 'box.lan' ]] || { echo "self-test FAILED (host with port)" >&2; return 1; }
 	[[ "$(cache_host 'https://box.lan?y=1')" == 'box.lan' ]] || { echo "self-test FAILED (host with query)" >&2; return 1; }
+	[[ "$(cache_host 'https://u:p@box.lan/x')" == 'box.lan' ]] || { echo "self-test FAILED (host with userinfo)" >&2; return 1; }
+	[[ "$(cache_host 'https://[fd00::1]:5000/x')" == 'fd00::1' ]] || { echo "self-test FAILED (IPv6 host)" >&2; return 1; }
 	echo "self-test OK"
 }
 
@@ -44,15 +53,17 @@ if [[ -n "${STORE_PARAMS:-}" && "$url" != *compression=* ]]; then
 fi
 
 args=(copy)
-
 if [[ -n "${NIX_CI_STORE:-}" ]]; then
 	args+=(--from "$NIX_CI_STORE")
-	# nix.conf's `secret-key-files` signs only what this machine's own store builds, so paths
-	# built in the remote store are signed here instead, as the cache store uploads them.
-	key="$(nix config show secret-key-files | awk '{print $1}')"
-	if [[ -n "$key" ]]; then
-		url="$(with_param "$url" "secret-key=$key")"
-	fi
+fi
+
+# Sign on the way out with setup-nix's key. `secret-key-files` signs only in a store whose daemon
+# reads this machine's nix.conf as a trusted user; a remote store's daemon, or a local daemon the
+# runner is not trusted by, signs nothing. Signing at the copy covers every setup, and substituted
+# paths get the signature too.
+key="$(nix config show secret-key-files | awk '{print $1}')"
+if [[ -n "$key" ]]; then
+	url="$(with_param "$url" "secret-key=$key")"
 fi
 
 if [[ -n "${CACHE_TOKEN:-}" ]]; then
