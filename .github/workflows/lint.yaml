@@ -24,6 +24,7 @@ jobs:
         run: |
           .github/actions/build/build-set.sh --self-test
           .github/actions/build/nix-log-summary.sh --self-test
+          .github/actions/build/push.sh --self-test
 
       # The reusable workflows pin the sibling actions they call. Nothing bumps those refs
       # automatically — neither GITHUB_TOKEN nor an app without the Workflows permission may write

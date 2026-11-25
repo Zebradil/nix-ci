@@ -132,7 +132,7 @@ particular, when you need to do something with the pushed closure that the wrapp
 
 | Action | Purpose |
 | --- | --- |
-| `setup-nix` | Install Nix, add substituters, restore the two build caches, and register the signing key so builds sign themselves. |
+| `setup-nix` | Install Nix (or reuse one the runner image ships), add substituters, restore the two build caches, and register the signing key so builds sign themselves. |
 | `discover` | Enumerate flake outputs into a build matrix. |
 | `build` | Build one target, push it, publish its kasha manifest, and write a job summary of what was downloaded and built. Exposes `paths-file`. |
 | `update-lock-pr` | Update `flake.lock`, diff, push the post-update builds with their kasha manifest, and open or update the PR. Exposes `paths-file`, `gen`, `branch`. |
@@ -207,15 +207,31 @@ pull requests, so the examples above use `vars.CACHE_S3_URL`.
 
 ## Signing
 
-`setup-nix` registers the signing key as nix.conf `secret-key-files`, so paths are signed as the
-daemon builds them and every push is a plain copy. One consequence worth knowing: paths the runner
-*substituted* rather than built keep only their upstream signature. If consumers of your cache also
-trust `cache.nixos.org`, that is invisible. If they trust only your key, sign the closure yourself —
-`setup-nix` exposes `signing-key-file` for exactly that.
+`setup-nix` registers the signing key as nix.conf `secret-key-files`, so a daemon that honours it
+signs paths as it builds them. `build` also signs every path as it pushes, through the destination's
+`secret-key` setting: a remote store's daemon, or a local one the runner is not trusted by, ignores
+`secret-key-files`, and substituted paths would otherwise keep only their upstream signature. Every
+pushed path therefore carries your signature. `setup-nix` still exposes `signing-key-file` for pushes
+made outside `build`.
 
 `setup-nix` fails the job when the signing key's public half is not among the trusted public keys.
 Paths signed with a key nobody trusts are pushed fine and then rejected by every substituter, so
 without the check a pasted wrong key only shows up as a cache that never hits.
+
+## Remote store
+
+A self-hosted runner can send builds to a shared remote store by setting `NIX_CI_STORE` in its
+environment, for example `ssh-ng://nixci@builder?ssh-key=/etc/nixci/key`. `build` then evaluates on
+the runner and builds, queries and pushes in that store; callers change nothing, and hosted legs of the
+same matrix, which lack the variable, behave as before. The store user may be untrusted: only
+content-addressed recipes and sources are uploaded to it. The store must build for the runner's own
+system, since `uncached-leaves` filters derivations by it. Pushes are signed as described under
+[Signing](#signing).
+
+A runner image that ships Nix keeps it: `setup-nix` writes its settings to a job-scoped file that it
+lists first in `NIX_USER_CONF_FILES`, so the runner's own configuration still applies. To push to
+a kasha box rather than S3, pass its `https://` URL as `cache-s3-url` and its write token as
+`cache-token`; the token goes only to that host, as the netrc password.
 
 ## Zebradil cache
 
