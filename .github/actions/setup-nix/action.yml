@@ -82,8 +82,12 @@ runs:
       env:
         # `json-log-path` records every download and build as structured events; the build
         # action's job summary is rendered from it.
+        # `always-allow-substitutes`: trivial derivations (unit files, desktop entries) set
+        # `allowSubstitutes = false`, and without this a fresh store plans hundreds of them as
+        # uncached leaves to build and publish, although every cache has them.
         CONF: |
           download-buffer-size = 524288000
+          always-allow-substitutes = true
           json-log-path = ${{ runner.temp }}/nix-log.jsonl
           extra-substituters = ${{ inputs.zebradil-cache == 'true' && 'https://znix.zebradil.dev' || '' }} ${{ inputs.extra-substituters }}
           extra-trusted-public-keys = ${{ inputs.zebradil-cache == 'true' && 'znix.zebradil.dev:nvr0OQFRddbHGopQbyLbLXQnntFBDKp23tqQq+msppw= kasha-ci-1:KNW/sz+Zz800U/IFZ38vH5rvlHtM3Fb0Q/wmDJquG+U=' || '' }} ${{ inputs.extra-trusted-public-keys }}
