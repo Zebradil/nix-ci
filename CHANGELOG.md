@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.1](https://github.com/Zebradil/nix-ci/compare/v3.2.0...v3.2.1) (2026-11-26)
+
+
+### Fixes
+
+* **build:** derive the uncached-leaves push from the build, not the store ([#39](https://github.com/Zebradil/nix-ci/issues/39)) ([cb780a9](https://github.com/Zebradil/nix-ci/commit/cb780a93ff8ef3da00513a5f8e9e9e68f0ba97c0))
+
 ## [3.2.0](https://github.com/Zebradil/nix-ci/compare/v3.1.0...v3.2.0) (2026-11-25)
 
 
