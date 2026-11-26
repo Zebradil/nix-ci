@@ -15,7 +15,9 @@ description: >
   exhausts its disk while proving nothing. Instead `build-set.sh` finds the genuinely uncached leaf
   derivations underneath it and builds only those — which is what actually proves the configuration
   compiles — and the toplevel's `.drv` recipe is pushed alongside the outputs so the target host can
-  realize it later from the cache.
+  realize it later from the cache. "Uncached" is judged against the caches from this runner's own
+  store, and the push holds exactly the built leaves' output closures plus that recipe closure, so
+  a warm or shared store changes neither what is built nor what is published.
 
   nix-fast-build cannot express the second shape: its `--select` runs before any store lookup, and
   every one of its build paths ends in realizing the toplevel derivation. Its uploader also
@@ -128,6 +130,8 @@ runs:
       run: |
         set -euo pipefail
         drvs=$("$GITHUB_ACTION_PATH/build-set.sh" "$ATTR")
+        # The push publishes what these produce, so it reads the same list.
+        printf '%s\n' "$drvs" > "$RUNNER_TEMP/leaves.txt"
         if [[ -z "$drvs" ]]; then
           echo "Nothing uncached to build for ${ATTR}."
           exit 0
@@ -155,25 +159,25 @@ runs:
         ATTR: ${{ inputs.attr }}
       run: |
         set -euo pipefail
-        # The final output may be invalid after a failed build, so resolve the whole derivation
-        # closure including outputs and keep only what actually exists in the store.
         # `nix path-info --derivation` instantiates the .drv without building it.
         drv=$(nix path-info --derivation ".#${ATTR}" 2>/dev/null || true)
-        : > "$RUNNER_TEMP/candidates.txt" "$RUNNER_TEMP/invalid.txt" "$RUNNER_TEMP/store-paths.txt"
+        leaves="$RUNNER_TEMP/leaves.txt"
+        [[ -f "$leaves" ]] || : > "$leaves"
+        : > "$RUNNER_TEMP/outputs.txt" "$RUNNER_TEMP/invalid.txt" "$RUNNER_TEMP/store-paths.txt"
         # The outputs live wherever they were built; build-set.sh copied the recipe there too.
         store=(nix-store)
         if [[ -n "${NIX_CI_STORE:-}" ]]; then store+=(--store "$NIX_CI_STORE"); fi
+        # What this build produced: the outputs of the leaves it built, with their runtime
+        # closures. Derived from the build, never from what else the store holds, so a long-lived
+        # or shared store publishes the same set as a fresh runner.
+        xargs -r "${store[@]}" --query --outputs < "$leaves" | sort -u > "$RUNNER_TEMP/outputs.txt"
+        # --print-invalid lists the missing paths in one call, so a partial build contributes its
+        # finished outputs without spawning a process per path.
+        xargs -r "${store[@]}" --check-validity --print-invalid \
+          < "$RUNNER_TEMP/outputs.txt" 2>/dev/null | sort -u > "$RUNNER_TEMP/invalid.txt" || true
+        comm -23 "$RUNNER_TEMP/outputs.txt" "$RUNNER_TEMP/invalid.txt" \
+          | xargs -r "${store[@]}" --query --requisites > "$RUNNER_TEMP/store-paths.txt"
         if [[ -n "$drv" ]]; then
-          # Built outputs, not the .drv files themselves.
-          "${store[@]}" --query --requisites --include-outputs "$drv" \
-            | { grep -v '\.drv$' || true; } | sort -u > "$RUNNER_TEMP/candidates.txt"
-          # --print-invalid lists the missing paths in one call, so a partial build contributes its
-          # finished outputs without spawning a process per path.
-          xargs -r "${store[@]}" --check-validity --print-invalid \
-            < "$RUNNER_TEMP/candidates.txt" 2>/dev/null \
-            | sort -u > "$RUNNER_TEMP/invalid.txt"
-          comm -23 "$RUNNER_TEMP/candidates.txt" "$RUNNER_TEMP/invalid.txt" \
-            > "$RUNNER_TEMP/store-paths.txt"
           # Also publish the toplevel's .drv recipe closure — its input drvs and source paths, text
           # at KB scale. This is what lets a consuming host run the toplevel's assembly locally,
           # substituting every input from the cache, instead of needing the toplevel output itself.

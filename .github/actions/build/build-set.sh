@@ -166,14 +166,14 @@ attr="${1:?usage: build-set.sh <flake-attr>|--self-test}"
 
 top_drv="$(nix path-info --derivation ".#${attr}")"
 
-# With a remote store (NIX_CI_STORE, see the build action) the builds happen
-# there, so its contents decide what is uncached. Copy the recipe closure over
-# first: .drv files and sources are content-addressed, so even an untrusted
-# store user may add them.
-store_args=()
+# With a remote store (NIX_CI_STORE, see the build action) the builds and the
+# later path queries happen there, so it needs the recipe closure: .drv files
+# and sources are content-addressed, so even an untrusted store user may add
+# them. Planning below still runs against this runner's own store: a warm remote
+# store would hide a leaf it already holds but no cache does, and that leaf
+# would then never be built or published.
 if [[ -n "${NIX_CI_STORE:-}" ]]; then
 	nix copy --derivation --to "$NIX_CI_STORE" "$top_drv"
-	store_args=(--store "$NIX_CI_STORE")
 fi
 
 # A plain package: build it whole. `nix build` substitutes whatever of its
@@ -186,7 +186,7 @@ fi
 # One dry-run plans the whole build without doing it: what it would build and
 # what it would substitute. This tells us which candidates are uncached (the
 # "will be built" block) — the only ones worth building and pushing.
-plan="$(nix-store ${store_args[@]+"${store_args[@]}"} --realise --dry-run "$top_drv" 2>&1)"
+plan="$(nix-store --realise --dry-run "$top_drv" 2>&1)"
 
 candidates="$(parse_built "$top_drv" <<<"$plan")"
 [[ -n "$candidates" ]] || exit 0
