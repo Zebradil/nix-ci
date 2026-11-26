@@ -187,6 +187,9 @@ fi
 # what it would substitute. This tells us which candidates are uncached (the
 # "will be built" block) — the only ones worth building and pushing.
 plan="$(nix-store --realise --dry-run "$top_drv" 2>&1)"
+# A substituter that fails to answer makes its paths look uncached, inflating
+# the build set, so surface its warnings and errors instead of swallowing them.
+grep -E '^(warning|error)' <<<"$plan" >&2 || true
 
 candidates="$(parse_built "$top_drv" <<<"$plan")"
 [[ -n "$candidates" ]] || exit 0
